@@ -2091,9 +2091,9 @@ const CustomerPortal = () => {
         let poCreated = false;
         const createdItems = [];
 
-        if (formData.vehicleNumber.trim()) {
+        if (updatedFormData.vehicleNumber.trim()) {
           const vehicleResponse = await vehiclesAPI.createOrGetVehicle(
-            formData.vehicleNumber
+            updatedFormData.vehicleNumber
           );
           vehicleCreated = vehicleResponse.data.created;
 
