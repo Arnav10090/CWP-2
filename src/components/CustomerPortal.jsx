@@ -2511,17 +2511,19 @@ const CustomerPortal = () => {
       }
 
       const submissionPayload = {
-        vehicleNumber: formData.vehicleNumber.trim(),
-        poNumber: formData.poNumber.trim(),
-        driverName: formData.driverName.trim(),
-        driverPhone: formData.driverPhone,
-        driverLanguage: formData.driverLanguage,
-        driverAadhar: normalizeAadharValue(formData.driverAadhar),
-        helperName: formData.helperName.trim(),
-        helperPhone: formData.helperPhone,
-        helperLanguage: formData.helperLanguage,
-        helperAadhar: normalizeAadharValue(formData.helperAadhar),
-        documentIds: uploadedFileIds,
+        customer_email: formData.customerEmail,
+        customer_phone: formData.customerPhone,
+        vehicle_number: formData.vehicleNumber.trim(),
+        po_number: formData.poNumber.trim(),
+        driver_name: formData.driverName.trim(),
+        driver_phone: formData.driverPhone,
+        driver_language: formData.driverLanguage,
+        driver_aadhar: normalizeAadharValue(formData.driverAadhar),
+        helper_name: formData.helperName.trim(),
+        helper_phone: formData.helperPhone,
+        helper_language: formData.helperLanguage,
+        helper_aadhar: normalizeAadharValue(formData.helperAadhar),
+        document_ids: uploadedFileIds,
       };
 
       const submissionResponse = await submissionsAPI.createSubmission(
