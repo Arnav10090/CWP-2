@@ -2139,10 +2139,10 @@ const CustomerPortal = () => {
           setVehicleSaved(true);
         }
 
-        if (formData.poNumber.trim()) {
+        if (updatedFormData.poNumber.trim()) {
           try {
             const poResponse = await poDetailsAPI.createOrGetPO(
-              formData.poNumber
+              updatedFormData.poNumber
             );
             poCreated = poResponse.data.created;
 
