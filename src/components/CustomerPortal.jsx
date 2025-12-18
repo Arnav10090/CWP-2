@@ -1441,37 +1441,38 @@ const CustomerPortal = () => {
   };
 
   const validateFields = useCallback(
-    (fieldNames) => {
+    (fieldNames, dataToValidate = null) => {
       const validationErrors = {};
+      const dataSource = dataToValidate || formData;
 
       fieldNames.forEach((field) => {
         if (field === "customerEmail") {
-          const result = validateEmail(formData.customerEmail);
+          const result = validateEmail(dataSource.customerEmail);
           if (result) {
             validationErrors.customerEmail = result;
           }
         }
         if (field === "customerPhone") {
-          const result = validatePhone(formData.customerPhone, "Phone number");
+          const result = validatePhone(dataSource.customerPhone, "Phone number");
           if (result) {
             validationErrors.customerPhone = result;
           }
         }
         if (field === "vehicleNumber") {
-          const result = validateVehicleNumber(formData.vehicleNumber);
+          const result = validateVehicleNumber(dataSource.vehicleNumber);
           if (result) {
             validationErrors.vehicleNumber = result;
           }
         }
         if (field === "poNumber") {
-          const result = validatePoNumber(formData.poNumber);
+          const result = validatePoNumber(dataSource.poNumber);
           if (result) {
             validationErrors.poNumber = result;
           }
         }
         if (field === "driverPhone") {
           const result = validatePhone(
-            formData.driverPhone,
+            dataSource.driverPhone,
             "Driver phone number"
           );
           if (result) {
@@ -1479,9 +1480,9 @@ const CustomerPortal = () => {
           }
         }
         if (field === "driverName") {
-          if (!formData.driverName || !formData.driverName.trim()) {
+          if (!dataSource.driverName || !dataSource.driverName.trim()) {
             validationErrors.driverName = "Driver name is required.";
-          } else if (formData.driverName.trim().length < 2) {
+          } else if (dataSource.driverName.trim().length < 2) {
             validationErrors.driverName =
               "Driver name must be at least 2 characters.";
           }
@@ -1489,7 +1490,7 @@ const CustomerPortal = () => {
         if (field === "driverAadhar") {
           if (!(driverExists && !driverChanged)) {
             const normalizedDriverAadhar = normalizeAadharValue(
-              formData.driverAadhar
+              dataSource.driverAadhar
             );
             if (!normalizedDriverAadhar) {
               validationErrors.driverAadhar =
@@ -1501,15 +1502,15 @@ const CustomerPortal = () => {
           }
         }
         if (field === "helperPhone") {
-          const result = validateHelperPhone(formData.helperPhone);
+          const result = validateHelperPhone(dataSource.helperPhone);
           if (result) {
             validationErrors.helperPhone = result;
           }
         }
         if (field === "helperName") {
-          if (!formData.helperName || !formData.helperName.trim()) {
+          if (!dataSource.helperName || !dataSource.helperName.trim()) {
             validationErrors.helperName = "Helper name is required.";
-          } else if (formData.helperName.trim().length < 2) {
+          } else if (dataSource.helperName.trim().length < 2) {
             validationErrors.helperName =
               "Helper name must be at least 2 characters.";
           }
@@ -1517,7 +1518,7 @@ const CustomerPortal = () => {
         if (field === "helperAadhar") {
           if (!(helperExists && !helperChanged)) {
             const normalizedHelperAadhar = normalizeAadharValue(
-              formData.helperAadhar
+              dataSource.helperAadhar
             );
             if (!normalizedHelperAadhar) {
               validationErrors.helperAadhar =
@@ -1528,10 +1529,10 @@ const CustomerPortal = () => {
             }
           }
         }
-        if (field === "driverLanguage" && !formData.driverLanguage) {
+        if (field === "driverLanguage" && !dataSource.driverLanguage) {
           validationErrors.driverLanguage = "Driver language is required.";
         }
-        if (field === "helperLanguage" && !formData.helperLanguage) {
+        if (field === "helperLanguage" && !dataSource.helperLanguage) {
           validationErrors.helperLanguage = "Helper language is required.";
         }
         if (field === "purchaseOrder") {
@@ -2034,19 +2035,17 @@ const CustomerPortal = () => {
 
   const handleNextStep = async () => {
     const currentStepFields = stepFieldMap[currentStep];
+    let updatedFormData = { ...formData };
 
     if (currentStep === 0) {
       const poValue = String(poSearch || formData.poNumber || "").trim();
       if (poValue && poValue !== formData.poNumber) {
-        setFormData((prev) => ({
-          ...prev,
-          poNumber: poValue,
-        }));
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        updatedFormData.poNumber = poValue;
+        setFormData(updatedFormData);
       }
     }
 
-    if (!validateFields(currentStepFields)) {
+    if (!validateFields(currentStepFields, updatedFormData)) {
       const hasEmptyFields = currentStepFields.some((field) => {
         if (field === "_anyDocument") {
           return !Object.values(files).some((arr) =>
@@ -2066,8 +2065,8 @@ const CustomerPortal = () => {
           field === "helperAadhar"
         ) {
           return (
-            !formData[field] ||
-            (typeof formData[field] === "string" && !formData[field].trim())
+            !updatedFormData[field] ||
+            (typeof updatedFormData[field] === "string" && !updatedFormData[field].trim())
           );
         }
 
@@ -2092,9 +2091,9 @@ const CustomerPortal = () => {
         let poCreated = false;
         const createdItems = [];
 
-        if (formData.vehicleNumber.trim()) {
+        if (updatedFormData.vehicleNumber.trim()) {
           const vehicleResponse = await vehiclesAPI.createOrGetVehicle(
-            formData.vehicleNumber
+            updatedFormData.vehicleNumber
           );
           vehicleCreated = vehicleResponse.data.created;
 
@@ -2140,10 +2139,10 @@ const CustomerPortal = () => {
           setVehicleSaved(true);
         }
 
-        if (formData.poNumber.trim()) {
+        if (updatedFormData.poNumber.trim()) {
           try {
             const poResponse = await poDetailsAPI.createOrGetPO(
-              formData.poNumber
+              updatedFormData.poNumber
             );
             poCreated = poResponse.data.created;
 
