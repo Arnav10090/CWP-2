@@ -531,17 +531,21 @@ const CustomerPortal = () => {
 
   const handleVehicleSelect = async (vehicleNumber) => {
     setVehicleDropdownOpen(false);
-    setVehicleSearch("");
+    setVehicleSearch(vehicleNumber);
     setLoadingVehicleData(true);
 
     try {
-      const vehicleResponse = await vehiclesAPI.createOrGetVehicle(
+      await vehiclesAPI.createOrGetVehicle(vehicleNumber);
+
+      const completeDataResponse = await vehiclesAPI.getVehicleCompleteData(
         vehicleNumber
       );
-      const vehicleId = vehicleResponse.data.vehicle.id;
-
-      const driverHelperResponse = await driversAPI.getByVehicle(vehicleId);
-      const { drivers = [], helpers = [] } = driverHelperResponse.data;
+      const {
+        documents,
+        po_number,
+        drivers = [],
+        helpers = [],
+      } = completeDataResponse.data || {};
 
       setAllDrivers(drivers);
       setAllHelpers(helpers);
@@ -574,11 +578,6 @@ const CustomerPortal = () => {
         ...prev,
         ...updates,
       }));
-
-      const completeDataResponse = await vehiclesAPI.getVehicleCompleteData(
-        vehicleNumber
-      );
-      const { documents, po_number } = completeDataResponse.data;
 
       if (po_number) {
         setFormData((prev) => {
@@ -2513,7 +2512,7 @@ const CustomerPortal = () => {
         customer_email: formData.customerEmail,
         customer_phone: formData.customerPhone,
         vehicle_number: formData.vehicleNumber.trim(),
-        po_number: formData.poNumber.trim(),
+        poNumber: formData.poNumber.trim(),
         driver_name: formData.driverName.trim(),
         driver_phone: formData.driverPhone,
         driver_language: formData.driverLanguage,
