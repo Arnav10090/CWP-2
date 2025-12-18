@@ -2034,19 +2034,17 @@ const CustomerPortal = () => {
 
   const handleNextStep = async () => {
     const currentStepFields = stepFieldMap[currentStep];
+    let updatedFormData = { ...formData };
 
     if (currentStep === 0) {
       const poValue = String(poSearch || formData.poNumber || "").trim();
       if (poValue && poValue !== formData.poNumber) {
-        setFormData((prev) => ({
-          ...prev,
-          poNumber: poValue,
-        }));
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        updatedFormData.poNumber = poValue;
+        setFormData(updatedFormData);
       }
     }
 
-    if (!validateFields(currentStepFields)) {
+    if (!validateFields(currentStepFields, updatedFormData)) {
       const hasEmptyFields = currentStepFields.some((field) => {
         if (field === "_anyDocument") {
           return !Object.values(files).some((arr) =>
