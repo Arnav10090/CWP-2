@@ -1472,7 +1472,7 @@ const CustomerPortal = () => {
         }
         if (field === "driverPhone") {
           const result = validatePhone(
-            formData.driverPhone,
+            dataSource.driverPhone,
             "Driver phone number"
           );
           if (result) {
@@ -1480,9 +1480,9 @@ const CustomerPortal = () => {
           }
         }
         if (field === "driverName") {
-          if (!formData.driverName || !formData.driverName.trim()) {
+          if (!dataSource.driverName || !dataSource.driverName.trim()) {
             validationErrors.driverName = "Driver name is required.";
-          } else if (formData.driverName.trim().length < 2) {
+          } else if (dataSource.driverName.trim().length < 2) {
             validationErrors.driverName =
               "Driver name must be at least 2 characters.";
           }
@@ -1490,7 +1490,7 @@ const CustomerPortal = () => {
         if (field === "driverAadhar") {
           if (!(driverExists && !driverChanged)) {
             const normalizedDriverAadhar = normalizeAadharValue(
-              formData.driverAadhar
+              dataSource.driverAadhar
             );
             if (!normalizedDriverAadhar) {
               validationErrors.driverAadhar =
@@ -1502,15 +1502,15 @@ const CustomerPortal = () => {
           }
         }
         if (field === "helperPhone") {
-          const result = validateHelperPhone(formData.helperPhone);
+          const result = validateHelperPhone(dataSource.helperPhone);
           if (result) {
             validationErrors.helperPhone = result;
           }
         }
         if (field === "helperName") {
-          if (!formData.helperName || !formData.helperName.trim()) {
+          if (!dataSource.helperName || !dataSource.helperName.trim()) {
             validationErrors.helperName = "Helper name is required.";
-          } else if (formData.helperName.trim().length < 2) {
+          } else if (dataSource.helperName.trim().length < 2) {
             validationErrors.helperName =
               "Helper name must be at least 2 characters.";
           }
@@ -1518,7 +1518,7 @@ const CustomerPortal = () => {
         if (field === "helperAadhar") {
           if (!(helperExists && !helperChanged)) {
             const normalizedHelperAadhar = normalizeAadharValue(
-              formData.helperAadhar
+              dataSource.helperAadhar
             );
             if (!normalizedHelperAadhar) {
               validationErrors.helperAadhar =
@@ -1529,10 +1529,10 @@ const CustomerPortal = () => {
             }
           }
         }
-        if (field === "driverLanguage" && !formData.driverLanguage) {
+        if (field === "driverLanguage" && !dataSource.driverLanguage) {
           validationErrors.driverLanguage = "Driver language is required.";
         }
-        if (field === "helperLanguage" && !formData.helperLanguage) {
+        if (field === "helperLanguage" && !dataSource.helperLanguage) {
           validationErrors.helperLanguage = "Helper language is required.";
         }
         if (field === "purchaseOrder") {
