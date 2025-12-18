@@ -2065,8 +2065,8 @@ const CustomerPortal = () => {
           field === "helperAadhar"
         ) {
           return (
-            !formData[field] ||
-            (typeof formData[field] === "string" && !formData[field].trim())
+            !updatedFormData[field] ||
+            (typeof updatedFormData[field] === "string" && !updatedFormData[field].trim())
           );
         }
 
