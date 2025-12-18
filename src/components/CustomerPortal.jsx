@@ -26,6 +26,9 @@ import {
   poDetailsAPI,
 } from "../services/api";
 import DriverHelperModal from "./DriverHelperModal";
+import Step1VehicleInfo from "./Step1VehicleInfo";
+import Step2DriverInfo from "./Step2DriverInfo";
+import Step3DocumentUpload from "./Step3DocumentUpload";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = [
