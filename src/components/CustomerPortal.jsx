@@ -1441,30 +1441,31 @@ const CustomerPortal = () => {
   };
 
   const validateFields = useCallback(
-    (fieldNames) => {
+    (fieldNames, dataToValidate = null) => {
       const validationErrors = {};
+      const dataSource = dataToValidate || formData;
 
       fieldNames.forEach((field) => {
         if (field === "customerEmail") {
-          const result = validateEmail(formData.customerEmail);
+          const result = validateEmail(dataSource.customerEmail);
           if (result) {
             validationErrors.customerEmail = result;
           }
         }
         if (field === "customerPhone") {
-          const result = validatePhone(formData.customerPhone, "Phone number");
+          const result = validatePhone(dataSource.customerPhone, "Phone number");
           if (result) {
             validationErrors.customerPhone = result;
           }
         }
         if (field === "vehicleNumber") {
-          const result = validateVehicleNumber(formData.vehicleNumber);
+          const result = validateVehicleNumber(dataSource.vehicleNumber);
           if (result) {
             validationErrors.vehicleNumber = result;
           }
         }
         if (field === "poNumber") {
-          const result = validatePoNumber(formData.poNumber);
+          const result = validatePoNumber(dataSource.poNumber);
           if (result) {
             validationErrors.poNumber = result;
           }
