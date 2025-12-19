@@ -175,9 +175,15 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     
     // Clear form data from localStorage on logout
-    localStorage.removeItem("customerPortal_formData");
-    localStorage.removeItem("customerPortal_files");
-    localStorage.removeItem("customerPortal_currentStep");
+    try {
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith("customerPortal_"))
+        .forEach((key) => localStorage.removeItem(key));
+    } catch {
+      localStorage.removeItem("customerPortal_formData");
+      localStorage.removeItem("customerPortal_files");
+      localStorage.removeItem("customerPortal_currentStep");
+    }
   };
 
   return (

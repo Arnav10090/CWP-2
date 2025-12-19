@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import {
   AlertCircle,
   FileText,
@@ -15,8 +14,6 @@ const Step1VehicleInfo = (props) => {
     errors,
     clearFieldError,
     vehicles,
-    setVehicles,
-    myVehicles,
     vehicleDropdownOpen,
     setVehicleDropdownOpen,
     vehicleSearch,
@@ -25,12 +22,12 @@ const Step1VehicleInfo = (props) => {
     selectedVehicle,
     setSelectedVehicle,
     loadingVehicleData,
-    vehicleRatings,
     poNumbers,
     poDropdownOpen,
     setPoDropdownOpen,
     poSearch,
     setPoSearch,
+    setSelectedPoNumber,
     loadingPos,
     dapName,
     loadingDap,
@@ -38,10 +35,6 @@ const Step1VehicleInfo = (props) => {
     vehicleListRef,
     poInputRef,
     poListRef,
-    handleVehicleSelect,
-    handlePONumberBlur,
-    validateVehicleNumber,
-    validatePoNumber,
   } = props;
 
   return (
@@ -157,6 +150,7 @@ const Step1VehicleInfo = (props) => {
                       onChange={(e) => {
                         const value = e.target.value;
                         setPoSearch(value);
+                        setSelectedPoNumber(null);
                         setFormData((prev) => ({
                           ...prev,
                           poNumber: value,
@@ -204,15 +198,12 @@ const Step1VehicleInfo = (props) => {
                                 e.preventDefault();
                                 const poValue = String(po.id);
                                 setPoSearch(poValue);
+                                setSelectedPoNumber(poValue);
                                 setPoDropdownOpen(false);
-                                setFormData((prev) => {
-                                  const updated = {
-                                    ...prev,
-                                    poNumber: poValue,
-                                  };
-                                  setTimeout(() => handlePONumberBlur(poValue), 0);
-                                  return updated;
-                                });
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  poNumber: poValue,
+                                }));
                                 clearFieldError("poNumber");
                               }}
                               className="w-full px-4 py-3 text-left text-sm hover:bg-blue-50 transition-colors border-b last:border-b-0 disabled:opacity-50"
@@ -299,6 +290,7 @@ const Step1VehicleInfo = (props) => {
                       value={vehicleSearch}
                       onChange={(e) => {
                         setVehicleSearch(e.target.value);
+                        setSelectedVehicle(null);
                         setFormData((prev) => ({
                           ...prev,
                           vehicleNumber: e.target.value,
@@ -349,9 +341,6 @@ const Step1VehicleInfo = (props) => {
                                   vehicleNumber:
                                     vehicle.vehicleRegistrationNo,
                                 }));
-                                await handleVehicleSelect(
-                                  vehicle.vehicleRegistrationNo
-                                );
                               }}
                               disabled={loadingVehicleData}
                               className="w-full px-4 py-3 text-left text-sm hover:bg-blue-50 transition-colors border-b last:border-b-0 disabled:opacity-50"

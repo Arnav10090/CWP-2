@@ -5,6 +5,8 @@ from rest_framework.response import Response
 from django.core.exceptions import ValidationError
 from .models import DriverHelper
 from .serializers import DriverHelperSerializer, DriverHelperValidateSerializer
+from documents.models import DocumentControl
+from documents.serializers import DocumentControlSerializer
 
 
 class DriverHelperViewSet(viewsets.ModelViewSet):
@@ -135,6 +137,106 @@ class DriverHelperViewSet(viewsets.ModelViewSet):
             return Response({
                 "error": str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
+
+    def _validate_or_create_and_fetch_docs(self, payload, document_type):
+        serializer = DriverHelperValidateSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+
+        name = serializer.validated_data['name']
+        phone_no = serializer.validated_data['phoneNo']
+        driver_type = serializer.validated_data['type']
+        language = serializer.validated_data.get('language', 'en')
+        uid = serializer.validated_data.get('uid')
+
+        try:
+            if uid:
+                existing_by_uid = DriverHelper.objects.filter(uid=uid).first()
+                if existing_by_uid:
+                    if existing_by_uid.phoneNo == phone_no:
+                        if existing_by_uid.name.lower() == name.lower():
+                            instance = existing_by_uid
+                            created = False
+                            message = "Existing driver/helper found with matching details"
+                        else:
+                            return Response({
+                                "error": f"Aadhar number is already registered with name '{existing_by_uid.name}'. Please verify the details."
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                    else:
+                        return Response({
+                            "error": "Aadhar number is already registered with a different phone number. Please verify the Aadhar number."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    instance = None
+                    created = False
+                    message = ""
+            else:
+                instance = None
+                created = False
+                message = ""
+
+            if instance is None:
+                existing_by_phone = DriverHelper.objects.filter(phoneNo=phone_no).first()
+                if existing_by_phone:
+                    if existing_by_phone.name.lower() == name.lower():
+                        if existing_by_phone.language != language:
+                            existing_by_phone.language = language
+                            existing_by_phone.save()
+
+                        instance = existing_by_phone
+                        created = False
+                        message = "Existing driver/helper found"
+                    else:
+                        return Response({
+                            "error": f"Phone number is already registered with a different person ('{existing_by_phone.name}'). Please enter a different phone number."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    if not uid:
+                        return Response({
+                            "error": "Aadhar number (uid) is required to create a new driver/helper"
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    instance = DriverHelper.objects.create(
+                        uid=uid,
+                        name=name,
+                        phoneNo=phone_no,
+                        type=driver_type,
+                        language=language,
+                        isBlacklisted=False,
+                        rating=None
+                    )
+                    created = True
+                    message = "New driver/helper created successfully"
+
+            documents = DocumentControl.objects.filter(
+                referenceId=instance.id,
+                type=document_type,
+            ).order_by('-created')
+
+            return Response({
+                "driver": DriverHelperSerializer(instance).data,
+                "created": created,
+                "message": message,
+                "documents": DocumentControlSerializer(documents, many=True).data,
+            }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+        except ValidationError as e:
+            return Response({
+                "error": str(e.message) if hasattr(e, 'message') else str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='validate-or-create-driverInfo')
+    def validate_or_create_driver_info(self, request):
+        payload = {**request.data, 'type': 'Driver'}
+        return self._validate_or_create_and_fetch_docs(payload, 'driver_aadhar')
+
+    @action(detail=False, methods=['post'], url_path='validate-or-create-helperinfo')
+    def validate_or_create_helper_info(self, request):
+        payload = {**request.data, 'type': 'Helper'}
+        return self._validate_or_create_and_fetch_docs(payload, 'helper_aadhar')
 
     @action(detail=False, methods=["get"], url_path="by-vehicle")
     def get_by_vehicle(self, request):

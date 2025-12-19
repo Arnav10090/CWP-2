@@ -61,42 +61,41 @@ class VehicleViewSet(viewsets.ModelViewSet):
 
         from podrivervehicletagging.models import DriverVehicleTagging, PODriverVehicleTagging
 
-        latest_tagging = (
+        taggings = (
             DriverVehicleTagging.objects
             .filter(vehicleId=vehicle)
             .select_related('driverId', 'helperId')
             .order_by('-created')
-            .first()
         )
 
-        driver_data = None
-        helper_data = None
+        drivers = {}
+        helpers = {}
+
+        for tagging in taggings:
+            if tagging.driverId:
+                drivers.setdefault(tagging.driverId.id, {
+                    "id": tagging.driverId.id,
+                    "name": tagging.driverId.name,
+                    "phoneNo": tagging.driverId.phoneNo,
+                    "language": tagging.driverId.language,
+                    "type": tagging.driverId.type,
+                    "uid": tagging.driverId.uid,
+                })
+
+            if tagging.helperId:
+                helpers.setdefault(tagging.helperId.id, {
+                    "id": tagging.helperId.id,
+                    "name": tagging.helperId.name,
+                    "phoneNo": tagging.helperId.phoneNo,
+                    "language": tagging.helperId.language,
+                    "type": tagging.helperId.type,
+                    "uid": tagging.helperId.uid,
+                })
+
+        latest_tagging = taggings.first()
         po_number = None
-        documents = []
 
         if latest_tagging:
-            if latest_tagging.driverId:
-                driver = latest_tagging.driverId
-                driver_data = {
-                    "id": driver.id,
-                    "name": driver.name,
-                    "phoneNo": driver.phoneNo,
-                    "language": driver.language,
-                    "type": driver.type,
-                    "uid": driver.uid,
-                }
-
-            if latest_tagging.helperId:
-                helper = latest_tagging.helperId
-                helper_data = {
-                    "id": helper.id,
-                    "name": helper.name,
-                    "phoneNo": helper.phoneNo,
-                    "language": helper.language,
-                    "type": helper.type,
-                    "uid": helper.uid,
-                }
-
             po_tagging = (
                 PODriverVehicleTagging.objects
                 .filter(driverVehicleTaggingId=latest_tagging)
@@ -104,50 +103,27 @@ class VehicleViewSet(viewsets.ModelViewSet):
                 .order_by('-created')
                 .first()
             )
-
             if po_tagging and po_tagging.poId:
                 po_number = po_tagging.poId.id
 
-        documents.extend(
-            DocumentControl.objects.filter(
-                referenceId=vehicle.id,
-                type__in=['vehicle_registration', 'vehicle_insurance', 'vehicle_puc']
-            ).order_by('-created')
-        )
-
-        if driver_data:
-            documents.extend(
-                DocumentControl.objects.filter(
-                    referenceId=driver_data['id'],
-                    type='driver_aadhar'
-                )
-            )
-
-        if helper_data:
-            documents.extend(
-                DocumentControl.objects.filter(
-                    referenceId=helper_data['id'],
-                    type='helper_aadhar'
-                )
-            )
-
-        if po_number:
-            documents.extend(
-                DocumentControl.objects.filter(
-                    referenceId=po_number,
-                    type__in=['po', 'do', 'before_weighing', 'after_weighing']
-                )
-            )
+        documents = DocumentControl.objects.filter(
+            referenceId=vehicle.id,
+            type__in=['vehicle_registration', 'vehicle_insurance', 'vehicle_puc']
+        ).order_by('-created')
 
         return Response({
             "vehicle": VehicleDetailsSerializer(vehicle).data,
-            "driver": driver_data,
-            "helper": helper_data,
+            "drivers": list(drivers.values()),
+            "helpers": list(helpers.values()),
             "po_number": po_number,
             "documents": DocumentControlSerializer(documents, many=True).data,
             "created": created,
             "message": "New vehicle created" if created else "Existing vehicle found"
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='create-or-get-vehicle-info')
+    def create_or_get_vehicle_info(self, request):
+        return self.create_or_get_vehicle(request)
 
     @action(detail=False, methods=['get'], url_path='vehicle-complete-data')
     def vehicle_complete_data(self, request):
@@ -219,36 +195,10 @@ class VehicleViewSet(viewsets.ModelViewSet):
             if po_tagging and po_tagging.poId:
                 po_number = po_tagging.poId.id
 
-        documents = list(
-            DocumentControl.objects.filter(
-                referenceId=vehicle.id,
-                type__in=['vehicle_registration', 'vehicle_insurance', 'vehicle_puc']
-            )
-        )
-
-        for driver in drivers.values():
-            documents.extend(
-                DocumentControl.objects.filter(
-                    referenceId=driver['id'],
-                    type='driver_aadhar'
-                )
-            )
-
-        for helper in helpers.values():
-            documents.extend(
-                DocumentControl.objects.filter(
-                    referenceId=helper['id'],
-                    type='helper_aadhar'
-                )
-            )
-
-        if po_number:
-            documents.extend(
-                DocumentControl.objects.filter(
-                    referenceId=po_number,
-                    type__in=['po', 'do', 'before_weighing', 'after_weighing']
-                )
-            )
+        documents = DocumentControl.objects.filter(
+            referenceId=vehicle.id,
+            type__in=['vehicle_registration', 'vehicle_insurance', 'vehicle_puc']
+        ).order_by('-created')
 
         return Response({
             "vehicle": VehicleDetailsSerializer(vehicle).data,

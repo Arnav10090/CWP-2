@@ -415,3 +415,78 @@ class CustomerDocumentViewSet(viewsets.ModelViewSet):
             "uploaded_at": document.uploaded_at,
             "updated_at": document.updated_at
         })
+
+    @action(detail=False, methods=['get'], url_path='by-vehicle/(?P<vehicle_id>[^/.]+)')
+    def get_by_vehicle(self, request, vehicle_id=None):
+        """Get only vehicle-related documents"""
+        try:
+            vehicle = VehicleDetails.objects.get(id=vehicle_id)
+            documents = DocumentControl.objects.filter(
+                referenceId=vehicle.id,
+                type__in=['vehicle_registration', 'vehicle_insurance', 'vehicle_puc']
+            ).order_by('-created')
+
+            serializer = DocumentControlSerializer(documents, many=True)
+            return Response({
+                "vehicle_id": vehicle.id,
+                "vehicle_number": vehicle.vehicleRegistrationNo,
+                "documents": serializer.data
+            })
+        except VehicleDetails.DoesNotExist:
+            return Response({"error": "Vehicle not found"}, status=404)
+
+    @action(detail=False, methods=['get'], url_path='by-driver/(?P<driver_id>[^/.]+)')
+    def get_by_driver(self, request, driver_id=None):
+        """Get only driver-related documents"""
+        try:
+            driver = DriverHelper.objects.get(id=driver_id, type='Driver')
+            documents = DocumentControl.objects.filter(
+                referenceId=driver.id,
+                type='driver_aadhar'
+            ).order_by('-created')
+
+            serializer = DocumentControlSerializer(documents, many=True)
+            return Response({
+                "driver_id": driver.id,
+                "driver_name": driver.name,
+                "documents": serializer.data
+            })
+        except DriverHelper.DoesNotExist:
+            return Response({"error": "Driver not found"}, status=404)
+
+    @action(detail=False, methods=['get'], url_path='by-helper/(?P<helper_id>[^/.]+)')
+    def get_by_helper(self, request, helper_id=None):
+        """Get only helper-related documents"""
+        try:
+            helper = DriverHelper.objects.get(id=helper_id, type='Helper')
+            documents = DocumentControl.objects.filter(
+                referenceId=helper.id,
+                type='helper_aadhar'
+            ).order_by('-created')
+
+            serializer = DocumentControlSerializer(documents, many=True)
+            return Response({
+                "helper_id": helper.id,
+                "helper_name": helper.name,
+                "documents": serializer.data
+            })
+        except DriverHelper.DoesNotExist:
+            return Response({"error": "Helper not found"}, status=404)
+
+    @action(detail=False, methods=['get'], url_path='by-po/(?P<po_number>[^/.]+)')
+    def get_by_po(self, request, po_number=None):
+        """Get only PO-related documents"""
+        try:
+            po = PODetails.objects.get(id=po_number)
+            documents = DocumentControl.objects.filter(
+                referenceId=po.id,
+                type__in=['po', 'do', 'before_weighing', 'after_weighing']
+            ).order_by('-created')
+
+            serializer = DocumentControlSerializer(documents, many=True)
+            return Response({
+                "po_number": po.id,
+                "documents": serializer.data
+            })
+        except PODetails.DoesNotExist:
+            return Response({"error": "PO not found"}, status=404)

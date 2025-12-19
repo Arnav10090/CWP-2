@@ -52,11 +52,29 @@ class PODetailsViewSet(viewsets.ModelViewSet):
                 "created": False
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        documents = []
+        try:
+            from documents.models import DocumentControl
+            from documents.serializers import DocumentControlSerializer
+
+            po_documents = DocumentControl.objects.filter(
+                referenceId=po.id,
+                type__in=['po', 'do', 'before_weighing', 'after_weighing']
+            ).order_by('-created')
+            documents = DocumentControlSerializer(po_documents, many=True).data
+        except Exception:
+            documents = []
+        
         return Response({
             "po": PODetailsSerializer(po).data,
+            "documents": documents,
             "created": created,
             "message": "New PO created" if created else "Existing PO found"
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='create-or-get-po-number')
+    def create_or_get_po_number(self, request):
+        return self.create_or_get_po(request)
 
     @action(detail=False, methods=['get'], url_path='my-pos')
     def my_pos(self, request):

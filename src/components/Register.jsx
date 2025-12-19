@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, EyeOff, AlertCircle, Loader, Truck, Mail, Lock, User, Phone, Building } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, Loader, Truck, Mail, Lock, User, Phone } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const Register = ({ onSwitchToLogin }) => {
@@ -11,7 +11,6 @@ const Register = ({ onSwitchToLogin }) => {
     password: "",
     verify_password: "",
     phone: "",
-    company_name: "",
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -72,10 +71,6 @@ const Register = ({ onSwitchToLogin }) => {
       newErrors.phone = "Phone must follow +91XXXXXXXXXX format";
     }
 
-    if (!formData.company_name.trim()) {
-      newErrors.company_name = "Company name is required";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -115,7 +110,6 @@ const Register = ({ onSwitchToLogin }) => {
         password: formData.password,
         verify_password: formData.verify_password,
         phone: formData.phone,
-        company_name: formData.company_name.trim(),
       });
 
       if (result.success) {
@@ -384,34 +378,6 @@ const Register = ({ onSwitchToLogin }) => {
                 <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
                   <AlertCircle className="h-4 w-4" />
                   {errors.phone}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="company_name" className="block text-sm font-medium text-gray-700 mb-2">
-                Company Name <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Building className="absolute left-3 top-3.5 h-5 w-5 text-gray-400 pointer-events-none" />
-                <input
-                  id="company_name"
-                  type="text"
-                  value={formData.company_name}
-                  onChange={(e) => handleInputChange("company_name", e.target.value)}
-                  placeholder="Your company name"
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                    errors.company_name
-                      ? "border-red-400 bg-red-50 placeholder:text-red-400 focus:ring-red-500"
-                      : "border-gray-300 bg-white placeholder:text-gray-400 focus:ring-blue-500"
-                  }`}
-                  disabled={loading}
-                />
-              </div>
-              {errors.company_name && (
-                <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-                  <AlertCircle className="h-4 w-4" />
-                  {errors.company_name}
                 </p>
               )}
             </div>

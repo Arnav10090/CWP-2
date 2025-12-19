@@ -81,6 +81,18 @@ const Step2DriverInfo = (props) => {
     loadingVehicleData,
   } = props;
 
+  const showDriverFields =
+    driverExists ||
+    driverChanged ||
+    !!(formData.driverName || formData.driverPhone || formData.driverAadhar) ||
+    (Array.isArray(allDrivers) && allDrivers.length > 0);
+
+  const showHelperFields =
+    helperExists ||
+    helperChanged ||
+    !!(formData.helperName || formData.helperPhone || formData.helperAadhar) ||
+    (Array.isArray(allHelpers) && allHelpers.length > 0);
+
   return (
     <>
       {loadingVehicleData && (
@@ -124,7 +136,21 @@ const Step2DriverInfo = (props) => {
             </h2>
           </div>
 
-          {savedDriverData && !driverChanged && (
+          {!showDriverFields && (
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => setShowDriverModal(true)}
+                disabled={loading || savingDriver}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white transition-all duration-200 hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-green-300"
+              >
+                <User className="h-4 w-4" />
+                Add New Driver
+              </button>
+            </div>
+          )}
+
+          {showDriverFields && savedDriverData && !driverChanged && (
             <div className="mt-4 flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
               <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
               <div>
@@ -139,7 +165,7 @@ const Step2DriverInfo = (props) => {
             </div>
           )}
 
-          {driverChanged && (
+          {showDriverFields && driverChanged && (
             <div className="mt-4 flex items-start gap-3 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
               <div>
@@ -151,7 +177,8 @@ const Step2DriverInfo = (props) => {
             </div>
           )}
 
-          <div className="mt-6 grid gap-6">
+          {showDriverFields && (
+            <div className="mt-6 grid gap-6">
             <div>
               <label
                 htmlFor="driverName"
@@ -533,6 +560,7 @@ const Step2DriverInfo = (props) => {
                 : "Fill in driver details and save or add as new"}
             </p>
           </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
@@ -546,7 +574,21 @@ const Step2DriverInfo = (props) => {
             </h2>
           </div>
 
-          {savedHelperData && !helperChanged && (
+          {!showHelperFields && (
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => setShowHelperModal(true)}
+                disabled={loading || savingHelper}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white transition-all duration-200 hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-green-300"
+              >
+                <User className="h-4 w-4" />
+                Add New Helper
+              </button>
+            </div>
+          )}
+
+          {showHelperFields && savedHelperData && !helperChanged && (
             <div className="mt-4 flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
               <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
               <div>
@@ -561,7 +603,7 @@ const Step2DriverInfo = (props) => {
             </div>
           )}
 
-          {helperChanged && (
+          {showHelperFields && helperChanged && (
             <div className="mt-4 flex items-start gap-3 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
               <div>
@@ -573,7 +615,8 @@ const Step2DriverInfo = (props) => {
             </div>
           )}
 
-          <div className="mt-6 grid gap-6">
+          {showHelperFields && (
+            <div className="mt-6 grid gap-6">
             <div>
               <label
                 htmlFor="helperName"
@@ -956,6 +999,7 @@ const Step2DriverInfo = (props) => {
                 : "Fill in helper details and save or add as new"}
             </p>
           </div>
+          )}
         </section>
       </div>
     </>

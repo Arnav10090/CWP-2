@@ -31,7 +31,6 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Don't retry logout or token refresh endpoints
     const isLogoutOrRefresh =
       originalRequest.url?.includes("/auth/logout/") ||
       originalRequest.url?.includes("/auth/token/refresh/");
@@ -62,7 +61,6 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
       } catch (refreshError) {
-        // Refresh token failed, clear storage
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("user");
@@ -77,9 +75,7 @@ api.interceptors.response.use(
 // Auth endpoints
 export const authAPI = {
   login: (email, password) => api.post("/auth/login/", { email, password }),
-
   register: (data) => api.post("/auth/register/", data),
-
   logout: async () => {
     try {
       const refreshToken = localStorage.getItem("refreshToken");
@@ -113,27 +109,33 @@ export const documentsAPI = {
       headers: { "Content-Type": "multipart/form-data" },
     }),
 
-  /**
-   * Upload document to DocumentControl table with local storage
-   * @param {FormData} formData - Must include: file, document_type, and optional reference fields
-   * @returns {Promise} - Response with document details
-   */
   uploadToDocumentControl: (formData) =>
     api.post("/documents/upload-to-control/", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
 
-  /**
-   * Delete document from DocumentControl table and remove file from storage
-   * @param {number} documentId - The ID of the document to delete
-   * @returns {Promise} - Response with success message
-   */
   deleteFromDocumentControl: (documentId) =>
     api.delete(`/documents/delete-from-control/${documentId}/`),
 
   getDocument: (id) => api.get(`/documents/${id}/`),
 
   deleteDocument: (id) => api.delete(`/documents/${id}/`),
+
+  // NEW: Get documents by vehicle ID (only vehicle-related docs)
+  getDocumentsByVehicle: (vehicleId) =>
+    api.get(`/documents/by-vehicle/${vehicleId}/`),
+
+  // NEW: Get documents by driver ID (only driver-related docs)
+  getDocumentsByDriver: (driverId) =>
+    api.get(`/documents/by-driver/${driverId}/`),
+
+  // NEW: Get documents by helper ID (only helper-related docs)
+  getDocumentsByHelper: (helperId) =>
+    api.get(`/documents/by-helper/${helperId}/`),
+
+  // NEW: Get documents by PO number (only PO-related docs)
+  getDocumentsByPO: (poNumber) =>
+    api.get(`/documents/by-po/${poNumber}/`),
 };
 
 // Submissions endpoints
@@ -141,8 +143,6 @@ export const submissionsAPI = {
   getSubmissions: (params) => api.get("/submissions/", { params }),
 
   createSubmission: (data) => {
-    // If data is FormData, use multipart/form-data
-    // If data is plain object, use application/json
     const config = {};
     if (data instanceof FormData) {
       config.headers = { "Content-Type": "multipart/form-data" };
@@ -153,9 +153,7 @@ export const submissionsAPI = {
   },
 
   getSubmission: (id) => api.get(`/submissions/${id}/`),
-
   updateSubmission: (id, data) => api.patch(`/submissions/${id}/`, data),
-
   generateQRCode: (submissionId) =>
     api.get(`/submissions/${submissionId}/generate_qr/`),
 };
@@ -163,21 +161,16 @@ export const submissionsAPI = {
 // Vehicles endpoints
 export const vehiclesAPI = {
   getVehicles: (params) => api.get("/vehicles/", { params }),
-
   getMyVehicles: () => api.get("/vehicles/my-vehicles/"),
-
   createOrGetVehicle: (vehicleNumber) =>
-    api.post("/vehicles/create/", { vehicle_number: vehicleNumber }),
-
+    api.post("/vehicles/create-or-get-vehicle-info/", {
+      vehicle_number: vehicleNumber,
+    }),
   createVehicle: (data) => api.post("/vehicles/", data),
-
   getVehicle: (id) => api.get(`/vehicles/${id}/`),
-
   updateVehicle: (id, data) => api.patch(`/vehicles/${id}/`, data),
-
   lookupVehicle: (vehicleNumber) =>
     api.get(`/vehicles/${vehicleNumber}/lookup/`),
-
   getVehicleCompleteData: (vehicleRegNo) =>
     api.get(`/vehicles/vehicle-complete-data/`, {
       params: { vehicle_reg_no: vehicleRegNo },
@@ -187,34 +180,29 @@ export const vehiclesAPI = {
 // PO Details endpoints
 export const poDetailsAPI = {
   getMyPOs: () => api.get("/po-details/my-pos/"),
-
   createOrGetPO: (poNumber) =>
-    api.post("/po-details/create/", { po_number: poNumber }),
-
+    api.post("/po-details/create-or-get-po-number/", { po_number: poNumber }),
   getPO: (id) => api.get(`/po-details/${id}/`),
 };
 
 // Drivers endpoints
 export const driversAPI = {
   getDrivers: (params) => api.get("/drivers/", { params }),
-
   createDriver: (data) => api.post("/drivers/", data),
-
   validateOrCreate: (data) => api.post("/drivers/validate-or-create/", data),
-
+  validateOrCreateDriverInfo: (data) =>
+    api.post("/drivers/validate-or-create-driverInfo/", data),
+  validateOrCreateHelperInfo: (data) =>
+    api.post("/drivers/validate-or-create-helperinfo/", data),
   getDriver: (id) => api.get(`/drivers/${id}/`),
-
   updateDriver: (id, data) => api.patch(`/drivers/${id}/`, data),
-
   getByVehicle: (vehicleId) => api.get("/drivers/by-vehicle/", {
     params: { vehicle_id: vehicleId }
   }),
-
   saveDriver: (data) => api.post("/drivers/validate-or-create/", {
     ...data,
     type: "Driver"
   }),
-
   saveHelper: (data) => api.post("/drivers/validate-or-create/", {
     ...data,
     type: "Helper"

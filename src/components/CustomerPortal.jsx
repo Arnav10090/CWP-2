@@ -16,6 +16,7 @@ import {
   Upload,
   User,
   ChevronDown,
+  ChevronLeft,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -82,6 +83,18 @@ const documentOptions = [
   { id: "beforeWeighing", label: "Before Weighing Receipt" },
   { id: "afterWeighing", label: "After Weighing Receipt" },
 ];
+
+ const docTypeMapping = {
+   vehicle_registration: "vehicleRegistration",
+   vehicle_insurance: "vehicleInsurance",
+   vehicle_puc: "vehiclePuc",
+   driver_aadhar: "driverAadhar",
+   helper_aadhar: "helperAadhar",
+   po: "po",
+   do: "do",
+   before_weighing: "beforeWeighing",
+   after_weighing: "afterWeighing",
+ };
 
 const steps = [
   {
@@ -228,6 +241,40 @@ const validateAadhar = (value, label) => {
   return "";
 };
 
+const mergeDocuments = (existingFiles, newDocuments, docTypeMapping) => {
+  const updatedFiles = { ...existingFiles };
+  
+  newDocuments.forEach((doc) => {
+    const frontendType = docTypeMapping[doc.type];
+    if (frontendType) {
+      const fileObj = {
+        name: doc.name || `${doc.type_display}.pdf`,
+        documentId: doc.id,
+        filePath: doc.filePath,
+        type: "application/pdf",
+        size: 0,
+        uploaded: true,
+        fromDatabase: true,
+      };
+
+      if (!updatedFiles[frontendType]) {
+        updatedFiles[frontendType] = [];
+      }
+      
+      // Check if document already exists
+      const exists = updatedFiles[frontendType].some(
+        f => f.documentId === doc.id
+      );
+      
+      if (!exists) {
+        updatedFiles[frontendType] = [...updatedFiles[frontendType], fileObj];
+      }
+    }
+  });
+  
+  return updatedFiles;
+};
+
 const DocumentUploadField = ({
   id,
   label,
@@ -334,9 +381,15 @@ const DocumentUploadField = ({
 const CustomerPortal = () => {
   const { logout, user } = useAuth();
 
+  const storageId = user?.id || user?.email || "anon";
+  const storageKeyCurrentStep = `customerPortal_${storageId}_currentStep`;
+  const storageKeyFormData = `customerPortal_${storageId}_formData`;
+  const storageKeyFiles = `customerPortal_${storageId}_files`;
+  const storageKeySuccessData = `customerPortal_${storageId}_successData`;
+
   const [currentStep, setCurrentStep] = useState(() => {
     try {
-      const saved = localStorage.getItem("customerPortal_currentStep");
+      const saved = localStorage.getItem(storageKeyCurrentStep);
       return saved ? parseInt(saved, 10) : 0;
     } catch {
       return 0;
@@ -345,7 +398,7 @@ const CustomerPortal = () => {
 
   const [formData, setFormData] = useState(() => {
     try {
-      const saved = localStorage.getItem("customerPortal_formData");
+      const saved = localStorage.getItem(storageKeyFormData);
       return saved ? JSON.parse(saved) : initialFormData;
     } catch {
       return initialFormData;
@@ -354,7 +407,7 @@ const CustomerPortal = () => {
 
   const [files, setFiles] = useState(() => {
     try {
-      const saved = localStorage.getItem("customerPortal_files");
+      const saved = localStorage.getItem(storageKeyFiles);
       return saved ? JSON.parse(saved) : initialFiles;
     } catch {
       return initialFiles;
@@ -374,15 +427,13 @@ const CustomerPortal = () => {
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [loadingVehicles, setLoadingVehicles] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
-  const [vehicleData, setVehicleData] = useState(null);
-  const [loadingVehicleData, setLoadingVehicleData] = useState(false);
-  const [vehicleRatings, setVehicleRatings] = useState("");
+  const [loadingVehicleData] = useState(false);
 
   const [poNumbers, setPoNumbers] = useState([]);
   const [poDropdownOpen, setPoDropdownOpen] = useState(false);
   const [poSearch, setPoSearch] = useState(() => {
     try {
-      const saved = localStorage.getItem("customerPortal_formData");
+      const saved = localStorage.getItem(storageKeyFormData);
       if (saved) {
         const parsed = JSON.parse(saved);
         return String(parsed.poNumber || "");
@@ -392,6 +443,7 @@ const CustomerPortal = () => {
     }
     return "";
   });
+  const [selectedPoNumber, setSelectedPoNumber] = useState(null);
   const [loadingPos, setLoadingPos] = useState(false);
   const [driverExists, setDriverExists] = useState(false);
   const [helperExists, setHelperExists] = useState(false);
@@ -401,7 +453,7 @@ const CustomerPortal = () => {
   const [myVehicles, setMyVehicles] = useState([]);
   const [vehicleHighlight, setVehicleHighlight] = useState(0);
   const [vehicleSaved, setVehicleSaved] = useState(false);
-  const [autoFillData, setAutoFillData] = useState(null);
+  const [autoFillData] = useState(null);
   const [savedDriverHelperData, setSavedDriverHelperData] = useState(null);
 
   const [savedDriverData, setSavedDriverData] = useState(null);
@@ -418,6 +470,9 @@ const CustomerPortal = () => {
   const vehicleListRef = useRef(null);
   const poInputRef = useRef(null);
   const poListRef = useRef(null);
+  const lastStorageIdRef = useRef(storageId);
+  const lastStep1NextRef = useRef({ vehicleNumber: null, poNumber: null });
+  const lastStep2NextRef = useRef({ snapshot: null });
 
   const normalizeAadharValue = (value) =>
     String(value ?? "")
@@ -467,6 +522,100 @@ const CustomerPortal = () => {
       isMounted = false;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (currentStep !== 0) return;
+
+    const nextValue = String(formData.vehicleNumber || "");
+    if (!nextValue) return;
+
+    const isEditing =
+      vehicleInputRef.current && document.activeElement === vehicleInputRef.current;
+    if (isEditing || vehicleDropdownOpen) return;
+
+    if (vehicleSearch !== nextValue) {
+      setVehicleSearch(nextValue);
+    }
+
+    if (!selectedVehicle) {
+      const match = (myVehicles || []).find(
+        (v) => String(v?.vehicleRegistrationNo || "") === nextValue
+      );
+      if (match) {
+        setSelectedVehicle(match);
+      }
+    }
+  }, [currentStep, formData.vehicleNumber, vehicleDropdownOpen, myVehicles, selectedVehicle, vehicleSearch]);
+
+  useEffect(() => {
+    if (lastStorageIdRef.current === storageId) return;
+    lastStorageIdRef.current = storageId;
+
+    const customerEmail = user?.email || "";
+    const customerPhone = user?.phone || user?.telephone || "";
+
+    let nextForm = null;
+    let nextFiles = null;
+    let nextStep = 0;
+    try {
+      const saved = localStorage.getItem(storageKeyFormData);
+      if (saved) {
+        nextForm = JSON.parse(saved);
+      }
+    } catch {
+      nextForm = null;
+    }
+
+    try {
+      const saved = localStorage.getItem(storageKeyFiles);
+      if (saved) {
+        nextFiles = JSON.parse(saved);
+      }
+    } catch {
+      nextFiles = null;
+    }
+
+    try {
+      const saved = localStorage.getItem(storageKeyCurrentStep);
+      if (saved) {
+        nextStep = parseInt(saved, 10);
+      }
+    } catch {
+      nextStep = 0;
+    }
+
+    if (nextForm) {
+      setFormData(nextForm);
+      setPoSearch(String(nextForm.poNumber || ""));
+    } else {
+      setFormData({
+        ...initialFormData,
+        customerEmail,
+        customerPhone,
+      });
+      setPoSearch("");
+      setVehicleSearch("");
+      setSelectedVehicle(null);
+      setSavedDriverData(null);
+      setSavedHelperData(null);
+      setAllDrivers([]);
+      setAllHelpers([]);
+      setDriverSearch("");
+      setHelperSearch("");
+      setDriverExists(false);
+      setHelperExists(false);
+      setDriverChanged(false);
+      setHelperChanged(false);
+      setSavedDriverHelperData(null);
+    }
+
+    setFiles(nextFiles || initialFiles);
+    setCurrentStep(Number.isFinite(nextStep) ? nextStep : 0);
+
+    localStorage.removeItem("customerPortal_formData");
+    localStorage.removeItem("customerPortal_files");
+    localStorage.removeItem("customerPortal_currentStep");
+  }, [storageId, storageKeyCurrentStep, storageKeyFiles, storageKeyFormData, user?.email, user?.phone, user?.telephone]);
 
   useEffect(() => {
     let isMounted = true;
@@ -529,174 +678,6 @@ const CustomerPortal = () => {
     }
   }, [formData.poNumber]);
 
-  const handleVehicleSelect = async (vehicleNumber) => {
-    setVehicleDropdownOpen(false);
-    setVehicleSearch(vehicleNumber);
-    setLoadingVehicleData(true);
-
-    try {
-      await vehiclesAPI.createOrGetVehicle(vehicleNumber);
-
-      const completeDataResponse = await vehiclesAPI.getVehicleCompleteData(
-        vehicleNumber
-      );
-      const {
-        documents,
-        po_number,
-        drivers = [],
-        helpers = [],
-      } = completeDataResponse.data || {};
-
-      setAllDrivers(drivers);
-      setAllHelpers(helpers);
-
-      const updates = {
-        vehicleNumber: vehicleNumber,
-      };
-
-      if (drivers.length > 0) {
-        const driver = drivers[0];
-        updates.driverName = driver.name || "";
-        updates.driverPhone = driver.phoneNo || "";
-        updates.driverLanguage = driver.language || "en";
-        updates.driverAadhar = normalizeAadharValue(driver.uid);
-        setSavedDriverData(driver);
-        setDriverExists(!!driver.uid);
-      }
-
-      if (helpers.length > 0) {
-        const helper = helpers[0];
-        updates.helperName = helper.name || "";
-        updates.helperPhone = helper.phoneNo || "";
-        updates.helperLanguage = helper.language || "en";
-        updates.helperAadhar = normalizeAadharValue(helper.uid);
-        setSavedHelperData(helper);
-        setHelperExists(!!helper.uid);
-      }
-
-      setFormData((prev) => ({
-        ...prev,
-        ...updates,
-      }));
-
-      if (po_number) {
-        setFormData((prev) => {
-          const existing =
-            typeof prev.poNumber === "string"
-              ? prev.poNumber.trim()
-              : String(prev.poNumber || "").trim();
-          if (existing) return prev;
-          return {
-            ...prev,
-            poNumber: String(po_number),
-          };
-        });
-      }
-
-      if (documents && documents.length > 0) {
-        const docTypeMapping = {
-          vehicle_registration: "vehicleRegistration",
-          vehicle_insurance: "vehicleInsurance",
-          vehicle_puc: "vehiclePuc",
-          driver_aadhar: "driverAadhar",
-          helper_aadhar: "helperAadhar",
-          po: "po",
-          do: "do",
-          before_weighing: "beforeWeighing",
-          after_weighing: "afterWeighing",
-        };
-
-        const newFiles = { ...initialFiles };
-
-        documents.forEach((doc) => {
-          const frontendType = docTypeMapping[doc.type];
-          if (frontendType) {
-            const fileObj = {
-              name: doc.name || `${doc.type_display}.pdf`,
-              documentId: doc.id,
-              filePath: doc.filePath,
-              type: "application/pdf",
-              size: 0,
-              uploaded: true,
-              fromDatabase: true,
-            };
-
-            if (!newFiles[frontendType]) {
-              newFiles[frontendType] = [];
-            }
-            newFiles[frontendType] = [...newFiles[frontendType], fileObj];
-          }
-        });
-
-        setFiles(newFiles);
-      }
-
-      if (drivers.length > 0 || helpers.length > 0) {
-        showPopupMessage(
-          `Vehicle data loaded${drivers.length > 0 ? " with driver(s)" : ""}${
-            helpers.length > 0 ? " and helper(s)" : ""
-          } info`,
-          "info"
-        );
-      }
-    } catch (error) {
-      console.error("Failed to load vehicle data:", error);
-      showPopupMessage("Failed to load vehicle data", "warning");
-    } finally {
-      setLoadingVehicleData(false);
-    }
-  };
-
-  const handleVehicleNumberBlur = async () => {
-    const vehicleNumber = formData.vehicleNumber.trim();
-    if (!vehicleNumber || vehicleNumber.length < 4) return;
-
-    const exists = myVehicles.some(
-      (v) => v.vehicleRegistrationNo === vehicleNumber
-    );
-    if (exists) {
-      await handleVehicleSelect(vehicleNumber);
-    } else {
-      try {
-        await vehiclesAPI.createOrGetVehicle(vehicleNumber);
-        const response = await vehiclesAPI.getMyVehicles();
-        setMyVehicles(response.data.vehicles || []);
-      } catch (error) {
-        console.error("Failed to create vehicle:", error);
-      }
-    }
-  };
-
-  const handlePONumberBlur = async (poNumberArg) => {
-    const poNumber = poNumberArg
-      ? String(poNumberArg).trim()
-      : formData.poNumber && typeof formData.poNumber === "string"
-      ? formData.poNumber.trim()
-      : "";
-    if (!poNumber || poNumber.length < 2) return;
-
-    try {
-      setLoadingDap(true);
-      const response = await poDetailsAPI.createOrGetPO(poNumber);
-      const poData = response.data.po;
-
-      if (poData && poData.dapName) {
-        if (typeof poData.dapName === "object" && poData.dapName.name) {
-          setDapName(poData.dapName.name);
-        } else if (typeof poData.dapName === "string") {
-          setDapName(poData.dapName);
-        }
-      } else {
-        setDapName("");
-      }
-    } catch (error) {
-      console.error("Failed to fetch PO details:", error);
-      setDapName("");
-    } finally {
-      setLoadingDap(false);
-    }
-  };
-
   useEffect(() => {
     if (user && user.email && user.phone) {
       setFormData((prev) => ({
@@ -713,212 +694,32 @@ const CustomerPortal = () => {
       setSuccessData(null);
       setVehicles([]);
       setSelectedVehicle(null);
-      setVehicleData(null);
     }
   }, [user?.id]);
 
-  const fetchVehicleData = async (vehicleRegNo) => {
-    try {
-      setLoadingVehicleData(true);
-      const response = await vehiclesAPI.getVehicleCompleteData(vehicleRegNo);
-      const data = response.data || {};
-
-      console.log("Vehicle Complete Data Response:", data);
-      console.log("Drivers from API:", data.drivers);
-
-      setVehicleData(data);
-
-      const allDriversList = data.drivers || [];
-      const allHelpersList = data.helpers || [];
-
-      console.log("Setting allDrivers with count:", allDriversList.length);
-      console.log(
-        "Driver names:",
-        allDriversList.map((d) => d.name)
-      );
-
-      setAllDrivers(allDriversList);
-      setAllHelpers(allHelpersList);
-
-      const updates = {
-        vehicleNumber: vehicleRegNo,
-      };
-
-      if (allDriversList.length > 0) {
-        const driver = allDriversList[0];
-        updates.driverName = driver.name || "";
-        updates.driverPhone = driver.phoneNo || "";
-        updates.driverLanguage = driver.language || "en";
-        updates.driverAadhar = normalizeAadharValue(driver.uid);
-        setSavedDriverData(driver);
-        setDriverExists(!!driver.uid);
-      }
-
-      if (allHelpersList.length > 0) {
-        const helper = allHelpersList[0];
-        updates.helperName = helper.name || "";
-        updates.helperPhone = helper.phoneNo || "";
-        updates.helperLanguage = helper.language || "en";
-        updates.helperAadhar = normalizeAadharValue(helper.uid);
-        setSavedHelperData(helper);
-        setHelperExists(!!helper.uid);
-      }
-
-      setFormData((prev) => ({
-        ...prev,
-        ...updates,
-      }));
-
-      const poNumber = data.po_number || data.poNumber || "";
-      if (poNumber) {
-        const poNumberStr = String(poNumber);
-        setFormData((prev) => {
-          const existing =
-            typeof prev.poNumber === "string"
-              ? prev.poNumber.trim()
-              : String(prev.poNumber || "").trim();
-          if (existing) return prev;
-          return {
-            ...prev,
-            poNumber: poNumberStr,
-          };
-        });
-      }
-
-      const documents = data.documents || data.document_list || [];
-      if (documents.length > 0) {
-        const docTypeMapping = {
-          vehicle_registration: "vehicleRegistration",
-          vehicle_insurance: "vehicleInsurance",
-          vehicle_puc: "vehiclePuc",
-          driver_aadhar: "driverAadhar",
-          helper_aadhar: "helperAadhar",
-          po: "po",
-          do: "do",
-          before_weighing: "beforeWeighing",
-          after_weighing: "afterWeighing",
-        };
-
-        const newFiles = { ...initialFiles };
-
-        documents.forEach((doc) => {
-          const frontendType = docTypeMapping[doc.type];
-          if (frontendType) {
-            const fileObj = {
-              name: doc.name || `${doc.type_display}.pdf`,
-              documentId: doc.id,
-              filePath: doc.filePath,
-              type: "application/pdf",
-              size: 0,
-              uploaded: true,
-              fromDatabase: true,
-            };
-
-            if (!newFiles[frontendType]) {
-              newFiles[frontendType] = [];
-            }
-            newFiles[frontendType] = [...newFiles[frontendType], fileObj];
-          }
-        });
-
-        setFiles(newFiles);
-      }
-
-      const auto = {
-        drivers: allDriversList,
-        helpers: allHelpersList,
-        po_number: poNumber,
-        documents: documents,
-      };
-      setAutoFillData(auto);
-
-      if (allDriversList.length > 0 || allHelpersList.length > 0) {
-        showPopupMessage(
-          `Vehicle data loaded with ${allDriversList.length} driver(s) and ${allHelpersList.length} helper(s)`,
-          "info"
-        );
-      }
-    } catch (error) {
-      console.error("Failed to fetch vehicle data:", error);
-      setVehicleData(null);
-      setAutoFillData(null);
-    } finally {
-      setLoadingVehicleData(false);
-    }
-  };
-
-  const autofillFormData = (data) => {
-    if (!data) return;
-
-    const vehicleReg =
-      (data.vehicle && data.vehicle.vehicleRegistrationNo) ||
-      data.vehicleRegistrationNo ||
-      "";
-
-    const driver =
-      data.driver || (Array.isArray(data.drivers) && data.drivers[0]) || null;
-
-    const helper =
-      data.helper || (Array.isArray(data.helpers) && data.helpers[0]) || null;
-
-    const poNumber = data.po_number || data.poNumber || "";
-
-    const ratings = data.ratings || data.vehicleRatings || data.rating || "";
-
-    const updates = {
-      ...(vehicleReg ? { vehicleNumber: vehicleReg } : {}),
-      ...(poNumber ? { poNumber: String(poNumber) } : {}),
-      ...(ratings ? { vehicleRatings: String(ratings) } : {}),
-    };
-
-    if (driver) {
-      updates.driverName = driver.name || driver.driverName || "";
-      updates.driverPhone = driver.phoneNo || driver.driver_phone || "";
-      updates.driverLanguage = driver.language || driver.lang || "en";
-      updates.driverAadhar = normalizeAadharValue(driver.uid);
-      setDriverExists(!!driver.uid);
-    }
-
-    if (helper) {
-      updates.helperName = helper.name || helper.helperName || "";
-      updates.helperPhone = helper.phoneNo || helper.helper_phone || "";
-      updates.helperLanguage = helper.language || helper.lang || "en";
-      updates.helperAadhar = normalizeAadharValue(helper.uid);
-      setHelperExists(!!helper.uid);
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      ...updates,
-    }));
-  };
-
   useEffect(() => {
     try {
-      localStorage.setItem("customerPortal_formData", JSON.stringify(formData));
+      localStorage.setItem(storageKeyFormData, JSON.stringify(formData));
     } catch (error) {
       console.error("Failed to save form data to localStorage:", error);
     }
-  }, [formData]);
+  }, [formData, storageKeyFormData]);
 
   useEffect(() => {
     try {
-      localStorage.setItem("customerPortal_files", JSON.stringify(files));
+      localStorage.setItem(storageKeyFiles, JSON.stringify(files));
     } catch (error) {
       console.error("Failed to save files to localStorage:", error);
     }
-  }, [files]);
+  }, [files, storageKeyFiles]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(
-        "customerPortal_currentStep",
-        currentStep.toString()
-      );
+      localStorage.setItem(storageKeyCurrentStep, currentStep.toString());
     } catch (error) {
       console.error("Failed to save current step to localStorage:", error);
     }
-  }, [currentStep]);
+  }, [currentStep, storageKeyCurrentStep]);
 
   useEffect(() => {
     const onDocClickAway = (e) => {
@@ -1138,7 +939,27 @@ const CustomerPortal = () => {
 
   const [submitError, setSubmitError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [successData, setSuccessData] = useState(null);
+  const [successData, setSuccessData] = useState(() => {
+    try {
+      const saved = localStorage.getItem(storageKeySuccessData);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (successData) {
+        localStorage.setItem(storageKeySuccessData, JSON.stringify(successData));
+      } else {
+        localStorage.removeItem(storageKeySuccessData);
+      }
+    } catch (error) {
+      console.error("Failed to save success data to localStorage:", error);
+    }
+  }, [successData, storageKeySuccessData]);
+
   const [mockNotice, setMockNotice] = useState("");
   const [showNotify, setShowNotify] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
@@ -1583,60 +1404,26 @@ const CustomerPortal = () => {
       return;
     }
 
-    try {
-      setSavingDriver(true);
-      const driverPayload = {
-        name: (formData.driverName || "").trim(),
-        phoneNo: formData.driverPhone,
-        type: "Driver",
-        language: formData.driverLanguage,
-        uid: normalizedDriverAadhar,
-      };
+    const localDriver = {
+      id: savedDriverData?.id || `temp-driver-${Date.now()}`,
+      uid: normalizedDriverAadhar,
+      name: (formData.driverName || "").trim(),
+      phoneNo: formData.driverPhone,
+      type: "Driver",
+      language: formData.driverLanguage,
+    };
 
-      const response = await driversAPI.validateOrCreate(driverPayload);
-      console.log("Driver saved:", response.data);
+    setSavedDriverData(localDriver);
+    setDriverSearch(localDriver.name || "");
+    setDriverDropdownOpen(false);
+    setDriverExists(true);
+    setDriverChanged(false);
 
-      setFormData((prev) => ({
-        ...prev,
-        driverAadhar:
-          normalizeAadharValue(response.data?.driver?.uid) || normalizedDriverAadhar,
-      }));
-
-      setSavedDriverData(response.data.driver);
-      setDriverExists(true);
-      setDriverChanged(false);
-
-      setAllDrivers((prev) => {
-        const exists = prev.some((d) => d.id === response.data.driver.id);
-        if (exists) return prev;
-        return [response.data.driver, ...prev];
-      });
-
-      showPopupMessage(
-        response.data.message || "Driver info saved successfully",
-        "info"
-      );
-    } catch (error) {
-      console.error("Failed to save driver:", error);
-
-      let errorMessage = "Failed to save driver";
-
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.uid) {
-        errorMessage = Array.isArray(error.response.data.uid)
-          ? error.response.data.uid[0]
-          : error.response.data.uid;
-      } else if (error.response?.data?.phoneNo) {
-        errorMessage = Array.isArray(error.response.data.phoneNo)
-          ? error.response.data.phoneNo[0]
-          : error.response.data.phoneNo;
-      }
-
-      showPopupMessage(errorMessage, "warning");
-    } finally {
-      setSavingDriver(false);
-    }
+    setAllDrivers((prev) => {
+      const exists = prev.some((d) => d.phoneNo === localDriver.phoneNo);
+      if (exists) return prev;
+      return [localDriver, ...prev];
+    });
   };
 
   const handleSaveHelper = async () => {
@@ -1646,60 +1433,26 @@ const CustomerPortal = () => {
       return;
     }
 
-    try {
-      setSavingHelper(true);
-      const helperPayload = {
-        name: (formData.helperName || "").trim(),
-        phoneNo: formData.helperPhone,
-        type: "Helper",
-        language: formData.helperLanguage,
-        uid: normalizedHelperAadhar,
-      };
+    const localHelper = {
+      id: savedHelperData?.id || `temp-helper-${Date.now()}`,
+      uid: normalizedHelperAadhar,
+      name: (formData.helperName || "").trim(),
+      phoneNo: formData.helperPhone,
+      type: "Helper",
+      language: formData.helperLanguage,
+    };
 
-      const response = await driversAPI.validateOrCreate(helperPayload);
-      console.log("Helper saved:", response.data);
+    setSavedHelperData(localHelper);
+    setHelperSearch(localHelper.name || "");
+    setHelperDropdownOpen(false);
+    setHelperExists(true);
+    setHelperChanged(false);
 
-      setFormData((prev) => ({
-        ...prev,
-        helperAadhar:
-          normalizeAadharValue(response.data?.driver?.uid) || normalizedHelperAadhar,
-      }));
-
-      setSavedHelperData(response.data.driver);
-      setHelperExists(true);
-      setHelperChanged(false);
-
-      setAllHelpers((prev) => {
-        const exists = prev.some((h) => h.id === response.data.driver.id);
-        if (exists) return prev;
-        return [response.data.driver, ...prev];
-      });
-
-      showPopupMessage(
-        response.data.message || "Helper info saved successfully",
-        "info"
-      );
-    } catch (error) {
-      console.error("Failed to save helper:", error);
-
-      let errorMessage = "Failed to save helper";
-
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.uid) {
-        errorMessage = Array.isArray(error.response.data.uid)
-          ? error.response.data.uid[0]
-          : error.response.data.uid;
-      } else if (error.response?.data?.phoneNo) {
-        errorMessage = Array.isArray(error.response.data.phoneNo)
-          ? error.response.data.phoneNo[0]
-          : error.response.data.phoneNo;
-      }
-
-      showPopupMessage(errorMessage, "warning");
-    } finally {
-      setSavingHelper(false);
-    }
+    setAllHelpers((prev) => {
+      const exists = prev.some((h) => h.phoneNo === localHelper.phoneNo);
+      if (exists) return prev;
+      return [localHelper, ...prev];
+    });
   };
 
   const handleAddDriver = async () => {
@@ -1723,30 +1476,26 @@ const CustomerPortal = () => {
       return;
     }
 
-    try {
-      setLoading(true);
-      const driverPayload = {
-        name: (formData.driverName || "").trim(),
-        phoneNo: formData.driverPhone,
-        type: "Driver",
-        language: formData.driverLanguage,
-        uid: normalizedDriverAadhar,
-      };
+    const localDriver = {
+      id: savedDriverData?.id || `temp-driver-${Date.now()}`,
+      uid: normalizedDriverAadhar,
+      name: (formData.driverName || "").trim(),
+      phoneNo: formData.driverPhone,
+      type: "Driver",
+      language: formData.driverLanguage,
+    };
 
-      const response = await driversAPI.validateOrCreate(driverPayload);
-      console.log("Driver created:", response.data);
+    setSavedDriverData(localDriver);
+    setDriverSearch(localDriver.name || "");
+    setDriverDropdownOpen(false);
+    setDriverExists(true);
+    setDriverChanged(false);
 
-      setDriverExists(true);
-      showPopupMessage("Driver added successfully", "info");
-    } catch (error) {
-      console.error("Failed to add driver:", error);
-      showPopupMessage(
-        error.response?.data?.error || "Failed to add driver",
-        "warning"
-      );
-    } finally {
-      setLoading(false);
-    }
+    setAllDrivers((prev) => {
+      const exists = prev.some((d) => d.phoneNo === localDriver.phoneNo);
+      if (exists) return prev;
+      return [localDriver, ...prev];
+    });
   };
 
   const handleAddHelper = async () => {
@@ -1770,267 +1519,121 @@ const CustomerPortal = () => {
       return;
     }
 
-    try {
-      setLoading(true);
-      const helperPayload = {
-        name: (formData.helperName || "").trim(),
-        phoneNo: formData.helperPhone,
-        type: "Helper",
-        language: formData.helperLanguage,
-        uid: normalizedHelperAadhar,
-      };
+    const localHelper = {
+      id: savedHelperData?.id || `temp-helper-${Date.now()}`,
+      uid: normalizedHelperAadhar,
+      name: (formData.helperName || "").trim(),
+      phoneNo: formData.helperPhone,
+      type: "Helper",
+      language: formData.helperLanguage,
+    };
 
-      const response = await driversAPI.validateOrCreate(helperPayload);
-      console.log("Helper created:", response.data);
+    setSavedHelperData(localHelper);
+    setHelperSearch(localHelper.name || "");
+    setHelperDropdownOpen(false);
+    setHelperExists(true);
+    setHelperChanged(false);
 
-      setHelperExists(true);
-      showPopupMessage("Helper added successfully", "info");
-    } catch (error) {
-      console.error("Failed to add helper:", error);
-      showPopupMessage(
-        error.response?.data?.error || "Failed to add helper",
-        "warning"
-      );
-    } finally {
-      setLoading(false);
-    }
+    setAllHelpers((prev) => {
+      const exists = prev.some((h) => h.phoneNo === localHelper.phoneNo);
+      if (exists) return prev;
+      return [localHelper, ...prev];
+    });
   };
 
   const handleDriverModalSave = async (driverData) => {
-    try {
-      setLoading(true);
-      const requestedUid = normalizeAadharValue(driverData.aadhar);
-      const payload = {
-        name: driverData.name.trim(),
-        phoneNo: driverData.phone,
-        type: "Driver",
-        language: driverData.language,
-        uid: requestedUid,
-      };
+    const requestedUid = normalizeAadharValue(driverData.aadhar);
+    const localDriver = {
+      id: `temp-driver-${Date.now()}`,
+      uid: requestedUid,
+      name: (driverData.name || "").trim(),
+      phoneNo: driverData.phone,
+      type: "Driver",
+      language: driverData.language,
+    };
 
-      const response = await driversAPI.validateOrCreate(payload);
-      const newDriver = response.data.driver;
+    setFormData((prev) => ({
+      ...prev,
+      driverName: localDriver.name,
+      driverPhone: localDriver.phoneNo,
+      driverLanguage: localDriver.language,
+      driverAadhar: requestedUid,
+    }));
 
-      const responseUid = normalizeAadharValue(newDriver?.uid);
-      const finalUid = responseUid || requestedUid;
+    setAllDrivers((prev) => [localDriver, ...prev]);
+    setSavedDriverData(localDriver);
+    setDriverExists(true);
+    setDriverSearch(localDriver.name || "");
+    setDriverDropdownOpen(false);
 
-      setFormData((prev) => ({
-        ...prev,
-        driverName: newDriver.name,
-        driverPhone: newDriver.phoneNo,
-        driverLanguage: newDriver.language,
-        driverAadhar: finalUid,
-      }));
-
-      setAllDrivers((prev) => [newDriver, ...prev]);
-      setSavedDriverData(newDriver);
-      setDriverExists(true);
-
-      setShowDriverModal(false);
-      showPopupMessage("New driver added successfully", "info");
-    } catch (error) {
-      console.error("Failed to add driver:", error);
-
-      let errorMessage = "Failed to add driver";
-
-      if (error.response?.data) {
-        const data = error.response.data;
-
-        if (data.uid) {
-          errorMessage = Array.isArray(data.uid) ? data.uid[0] : data.uid;
-        } else if (data.error) {
-          errorMessage = data.error;
-        } else if (data.phoneNo) {
-          errorMessage = Array.isArray(data.phoneNo)
-            ? data.phoneNo[0]
-            : data.phoneNo;
-        } else if (data.name) {
-          errorMessage = Array.isArray(data.name) ? data.name[0] : data.name;
-        }
-      }
-
-      showPopupMessage(errorMessage, "warning");
-    } finally {
-      setLoading(false);
-    }
+    setShowDriverModal(false);
   };
 
   const handleHelperModalSave = async (helperData) => {
-    try {
-      setLoading(true);
-      const requestedUid = normalizeAadharValue(helperData.aadhar);
-      const payload = {
-        name: helperData.name.trim(),
-        phoneNo: helperData.phone,
-        type: "Helper",
-        language: helperData.language,
-        uid: requestedUid,
-      };
+    const requestedUid = normalizeAadharValue(helperData.aadhar);
+    const localHelper = {
+      id: `temp-helper-${Date.now()}`,
+      uid: requestedUid,
+      name: (helperData.name || "").trim(),
+      phoneNo: helperData.phone,
+      type: "Helper",
+      language: helperData.language,
+    };
 
-      const response = await driversAPI.validateOrCreate(payload);
-      const newHelper = response.data.driver;
+    setFormData((prev) => ({
+      ...prev,
+      helperName: localHelper.name,
+      helperPhone: localHelper.phoneNo,
+      helperLanguage: localHelper.language,
+      helperAadhar: requestedUid,
+    }));
 
-      const responseUid = normalizeAadharValue(newHelper?.uid);
-      const finalUid = responseUid || requestedUid;
+    setAllHelpers((prev) => [localHelper, ...prev]);
+    setSavedHelperData(localHelper);
+    setHelperExists(true);
+    setHelperSearch(localHelper.name || "");
+    setHelperDropdownOpen(false);
 
-      setFormData((prev) => ({
-        ...prev,
-        helperName: newHelper.name,
-        helperPhone: newHelper.phoneNo,
-        helperLanguage: newHelper.language,
-        helperAadhar: finalUid,
-      }));
-
-      setAllHelpers((prev) => [newHelper, ...prev]);
-      setSavedHelperData(newHelper);
-      setHelperExists(true);
-
-      setShowHelperModal(false);
-      showPopupMessage("New helper added successfully", "info");
-    } catch (error) {
-      console.error("Failed to add helper:", error);
-
-      let errorMessage = "Failed to add helper";
-
-      if (error.response?.data) {
-        const data = error.response.data;
-
-        if (data.uid) {
-          errorMessage = Array.isArray(data.uid) ? data.uid[0] : data.uid;
-        } else if (data.error) {
-          errorMessage = data.error;
-        } else if (data.phoneNo) {
-          errorMessage = Array.isArray(data.phoneNo)
-            ? data.phoneNo[0]
-            : data.phoneNo;
-        } else if (data.name) {
-          errorMessage = Array.isArray(data.name) ? data.name[0] : data.name;
-        }
-      }
-
-      showPopupMessage(errorMessage, "warning");
-    } finally {
-      setLoading(false);
-    }
+    setShowHelperModal(false);
   };
 
   const handleDriverSelect = async (driver) => {
-    setFormData((prev) => ({
-      ...prev,
-      driverName: driver.name,
-      driverPhone: driver.phoneNo,
-      driverLanguage: driver.language,
-      driverAadhar: normalizeAadharValue(driver.uid),
-    }));
-    setDriverSearch(driver.name);
-    setDriverDropdownOpen(false);
-    setSavedDriverData(driver);
-    setDriverExists(true);
-
-    if (formData.vehicleNumber) {
-      try {
-        const driverId = driver.id;
-        const docsResponse = await documentsAPI.getDocumentsByDriver(driverId);
-
-        const documents = docsResponse.data || [];
-        if (documents.length > 0) {
-          const docTypeMapping = {
-            vehicle_registration: "vehicleRegistration",
-            vehicle_insurance: "vehicleInsurance",
-            vehicle_puc: "vehiclePuc",
-            driver_aadhar: "driverAadhar",
-            helper_aadhar: "helperAadhar",
-            po: "po",
-            do: "do",
-            before_weighing: "beforeWeighing",
-            after_weighing: "afterWeighing",
-          };
-
-          setFiles((prevFiles) => {
-            const updatedFiles = { ...prevFiles };
-
-            documents.forEach((doc) => {
-              const frontendType = docTypeMapping[doc.type];
-              if (frontendType && !updatedFiles[frontendType]) {
-                updatedFiles[frontendType] = [
-                  {
-                    name: doc.name,
-                    documentId: doc.id,
-                    filePath: doc.filePath,
-                    type: "application/pdf",
-                    fromDatabase: true,
-                  },
-                ];
-              }
-            });
-
-            return updatedFiles;
-          });
-        }
-      } catch (error) {
-        console.error("Failed to fetch driver documents:", error);
-      }
-    }
-  };
+  console.log(`🔄 Driver selected: ${driver.name} (ID: ${driver.id})`);
+  
+  // Update form data with selected driver
+  setFormData((prev) => ({
+    ...prev,
+    driverName: driver.name,
+    driverPhone: driver.phoneNo,
+    driverLanguage: driver.language,
+    driverAadhar: normalizeAadharValue(driver.uid),
+  }));
+  
+  setDriverSearch(driver.name);
+  setDriverDropdownOpen(false);
+  setSavedDriverData(driver);
+  setDriverExists(true);
+  setDriverChanged(false); // Reset changed flag since we're loading saved data
+};
 
   const handleHelperSelect = async (helper) => {
-    setFormData((prev) => ({
-      ...prev,
-      helperName: helper.name,
-      helperPhone: helper.phoneNo,
-      helperLanguage: helper.language,
-      helperAadhar: normalizeAadharValue(helper.uid),
-    }));
-    setHelperSearch(helper.name);
-    setHelperDropdownOpen(false);
-    setSavedHelperData(helper);
-    setHelperExists(true);
-
-    if (formData.vehicleNumber) {
-      try {
-        const helperId = helper.id;
-        const docsResponse = await documentsAPI.getDocumentsByDriver(helperId);
-
-        const documents = docsResponse.data || [];
-        if (documents.length > 0) {
-          const docTypeMapping = {
-            vehicle_registration: "vehicleRegistration",
-            vehicle_insurance: "vehicleInsurance",
-            vehicle_puc: "vehiclePuc",
-            driver_aadhar: "driverAadhar",
-            helper_aadhar: "helperAadhar",
-            po: "po",
-            do: "do",
-            before_weighing: "beforeWeighing",
-            after_weighing: "afterWeighing",
-          };
-
-          setFiles((prevFiles) => {
-            const updatedFiles = { ...prevFiles };
-
-            documents.forEach((doc) => {
-              const frontendType = docTypeMapping[doc.type];
-              if (frontendType && !updatedFiles[frontendType]) {
-                updatedFiles[frontendType] = [
-                  {
-                    name: doc.name,
-                    documentId: doc.id,
-                    filePath: doc.filePath,
-                    type: "application/pdf",
-                    fromDatabase: true,
-                  },
-                ];
-              }
-            });
-
-            return updatedFiles;
-          });
-        }
-      } catch (error) {
-        console.error("Failed to fetch helper documents:", error);
-      }
-    }
-  };
+  console.log(`🔄 Helper selected: ${helper.name} (ID: ${helper.id})`);
+  
+  // Update form data with selected helper
+  setFormData((prev) => ({
+    ...prev,
+    helperName: helper.name,
+    helperPhone: helper.phoneNo,
+    helperLanguage: helper.language,
+    helperAadhar: normalizeAadharValue(helper.uid),
+  }));
+  
+  setHelperSearch(helper.name);
+  setHelperDropdownOpen(false);
+  setSavedHelperData(helper);
+  setHelperExists(true);
+  setHelperChanged(false); // Reset changed flag since we're loading saved data
+};
 
   const handleNextStep = async () => {
     const currentStepFields = stepFieldMap[currentStep];
@@ -2041,6 +1644,20 @@ const CustomerPortal = () => {
       if (poValue && poValue !== formData.poNumber) {
         updatedFormData.poNumber = poValue;
         setFormData(updatedFormData);
+      }
+    }
+
+    if (currentStep === 1) {
+      const hasDriverDetails =
+        !!savedDriverData ||
+        !!((updatedFormData.driverName || "").trim() && updatedFormData.driverPhone);
+      const hasHelperDetails =
+        !!savedHelperData ||
+        !!((updatedFormData.helperName || "").trim() && updatedFormData.helperPhone);
+
+      if (!hasDriverDetails || !hasHelperDetails) {
+        showPopupMessage("Add Driver and Helper Details first", "warning");
+        return;
       }
     }
 
@@ -2083,107 +1700,302 @@ const CustomerPortal = () => {
     }
 
     if (currentStep === 0) {
-      try {
-        setLoading(true);
+      const normalizedVehicleNumber = String(
+        updatedFormData.vehicleNumber || ""
+      ).trim();
+      const normalizedPoNumber = String(updatedFormData.poNumber || "").trim();
 
+      const step1Unchanged =
+        lastStep1NextRef.current.vehicleNumber === normalizedVehicleNumber &&
+        lastStep1NextRef.current.poNumber === normalizedPoNumber;
+
+      if (!step1Unchanged) {
         let vehicleCreated = false;
         let poCreated = false;
         const createdItems = [];
 
-        if (updatedFormData.vehicleNumber.trim()) {
-          const vehicleResponse = await vehiclesAPI.createOrGetVehicle(
-            updatedFormData.vehicleNumber
-          );
-          vehicleCreated = vehicleResponse.data.created;
+        try {
+          setLoading(true);
 
-          if (vehicleCreated) {
-            createdItems.push("Vehicle");
-          }
-
-          const { driver, helper, po_number } = vehicleResponse.data;
-
-          const updates = {};
-          let hasDriver = false;
-          let hasHelper = false;
-
-          if (driver) {
-            updates.driverName = driver.name || "";
-            updates.driverPhone = driver.phoneNo || "";
-            updates.driverLanguage = driver.language || "en";
-            hasDriver = true;
-          }
-
-          if (helper) {
-            updates.helperName = helper.name || "";
-            updates.helperPhone = helper.phoneNo || "";
-            updates.helperLanguage = helper.language || "en";
-            hasHelper = true;
-          }
-
-          if (Object.keys(updates).length > 0) {
-            setFormData((prev) => ({ ...prev, ...updates }));
-
-            if (!hasShownDriverHelperPopup) {
-              if (hasDriver && hasHelper) {
-                showPopupMessage("Driver and Helper info auto-filled", "info");
-              } else if (hasDriver) {
-                showPopupMessage("Driver info auto-filled", "info");
-              } else if (hasHelper) {
-                showPopupMessage("Helper info auto-filled", "info");
-              }
-              setHasShownDriverHelperPopup(true);
-            }
-          }
-
-          setVehicleSaved(true);
-        }
-
-        if (updatedFormData.poNumber.trim()) {
-          try {
-            const poResponse = await poDetailsAPI.createOrGetPO(
-              updatedFormData.poNumber
+          if (normalizedVehicleNumber) {
+            const vehicleResponse = await vehiclesAPI.createOrGetVehicle(
+              normalizedVehicleNumber
             );
-            poCreated = poResponse.data.created;
+            vehicleCreated = !!vehicleResponse.data?.created;
 
-            if (poCreated) {
-              createdItems.push("PO");
+            if (vehicleCreated) {
+              createdItems.push("Vehicle");
             }
 
-            const poData = poResponse.data.po;
+            const { drivers = [], helpers = [] } = vehicleResponse.data || {};
 
-            if (poData && poData.dapName) {
-              if (typeof poData.dapName === "object" && poData.dapName.name) {
-                setDapName(poData.dapName.name);
-              } else if (typeof poData.dapName === "string") {
-                setDapName(poData.dapName);
+            if (!vehicleCreated) {
+              const updates = {};
+              let hasDriver = false;
+              let hasHelper = false;
+
+              if (Array.isArray(drivers) && drivers.length > 0) {
+                const driver = drivers[0];
+                updates.driverName = driver.name || "";
+                updates.driverPhone = driver.phoneNo || "";
+                updates.driverLanguage = driver.language || "en";
+                if (driver.uid) {
+                  updates.driverAadhar = normalizeAadharValue(driver.uid);
+                }
+                setSavedDriverData(driver);
+                setAllDrivers(drivers);
+                setDriverSearch(driver.name || "");
+                setDriverExists(!!driver.uid);
+                setDriverChanged(false);
+                hasDriver = true;
+              }
+
+              if (Array.isArray(helpers) && helpers.length > 0) {
+                const helper = helpers[0];
+                updates.helperName = helper.name || "";
+                updates.helperPhone = helper.phoneNo || "";
+                updates.helperLanguage = helper.language || "en";
+                if (helper.uid) {
+                  updates.helperAadhar = normalizeAadharValue(helper.uid);
+                }
+                setSavedHelperData(helper);
+                setAllHelpers(helpers);
+                setHelperSearch(helper.name || "");
+                setHelperExists(!!helper.uid);
+                setHelperChanged(false);
+                hasHelper = true;
+              }
+
+              if (!hasDriver) {
+                updates.driverName = "";
+                updates.driverPhone = "";
+                updates.driverLanguage = "en";
+                updates.driverAadhar = "";
+                setSavedDriverData(null);
+                setAllDrivers([]);
+                setDriverSearch("");
+                setDriverExists(false);
+                setDriverChanged(false);
+              }
+
+              if (!hasHelper) {
+                updates.helperName = "";
+                updates.helperPhone = "";
+                updates.helperLanguage = "en";
+                updates.helperAadhar = "";
+                setSavedHelperData(null);
+                setAllHelpers([]);
+                setHelperSearch("");
+                setHelperExists(false);
+                setHelperChanged(false);
+              }
+
+              if (Object.keys(updates).length > 0) {
+                setFormData((prev) => ({ ...prev, ...updates }));
+
+                if (!hasShownDriverHelperPopup) {
+                  if (hasDriver && hasHelper) {
+                    showPopupMessage(
+                      "Driver and Helper info auto-filled",
+                      "info"
+                    );
+                  } else if (hasDriver) {
+                    showPopupMessage("Driver info auto-filled", "info");
+                  } else if (hasHelper) {
+                    showPopupMessage("Helper info auto-filled", "info");
+                  }
+                  setHasShownDriverHelperPopup(true);
+                }
               }
             } else {
-              setDapName("");
+              setFormData((prev) => ({
+                ...prev,
+                driverName: "",
+                driverPhone: "",
+                driverLanguage: "en",
+                driverAadhar: "",
+                helperName: "",
+                helperPhone: "",
+                helperLanguage: "en",
+                helperAadhar: "",
+              }));
+              setSavedDriverData(null);
+              setSavedHelperData(null);
+              setAllDrivers([]);
+              setAllHelpers([]);
+              setDriverSearch("");
+              setHelperSearch("");
+              setDriverExists(false);
+              setHelperExists(false);
+              setDriverChanged(false);
+              setHelperChanged(false);
+              setSavedDriverHelperData(null);
+              setHasShownDriverHelperPopup(false);
             }
-          } catch (poError) {
-            console.error("Failed to create/get PO:", poError);
-            showPopupMessage(
-              "Failed to save PO details, but you can continue",
-              "warning"
-            );
-          }
-        }
 
-        if (createdItems.length > 0) {
-          const message = `${createdItems.join(
-            " and "
-          )} numbers created successfully`;
-          showPopupMessage(message, "info");
+            setVehicleSaved(true);
+
+            const isDropdownSelectedExistingVehicle =
+              !vehicleCreated &&
+              !!selectedVehicle &&
+              String(selectedVehicle?.vehicleRegistrationNo || "") ===
+                normalizedVehicleNumber;
+
+            if (isDropdownSelectedExistingVehicle) {
+              const vehicleDocs = vehicleResponse.data?.documents || [];
+              if (vehicleDocs.length > 0) {
+                setFiles((prev) => {
+                  const cleared = {
+                    ...prev,
+                    vehicleRegistration: (prev.vehicleRegistration || []).filter(
+                      (f) => !f?.uploaded
+                    ),
+                    vehicleInsurance: (prev.vehicleInsurance || []).filter(
+                      (f) => !f?.uploaded
+                    ),
+                    vehiclePuc: (prev.vehiclePuc || []).filter((f) => !f?.uploaded),
+                  };
+                  return mergeDocuments(cleared, vehicleDocs, docTypeMapping);
+                });
+              }
+            } else {
+              setFiles((prev) => ({
+                ...prev,
+                vehicleRegistration: (prev.vehicleRegistration || []).filter(
+                  (f) => !f?.uploaded
+                ),
+                vehicleInsurance: (prev.vehicleInsurance || []).filter(
+                  (f) => !f?.uploaded
+                ),
+                vehiclePuc: (prev.vehiclePuc || []).filter((f) => !f?.uploaded),
+              }));
+            }
+          }
+
+          if (normalizedPoNumber) {
+            try {
+              const poResponse = await poDetailsAPI.createOrGetPO(
+                normalizedPoNumber
+              );
+              poCreated = !!poResponse.data?.created;
+
+              if (poCreated) {
+                createdItems.push("PO");
+              }
+
+              const poData = poResponse.data?.po;
+
+              if (poData && poData.dapName) {
+                if (typeof poData.dapName === "object" && poData.dapName.name) {
+                  setDapName(poData.dapName.name);
+                } else if (typeof poData.dapName === "string") {
+                  setDapName(poData.dapName);
+                }
+              } else {
+                setDapName("");
+              }
+
+              const isDropdownSelectedExistingPo =
+                !poCreated &&
+                !!selectedPoNumber &&
+                String(selectedPoNumber) === normalizedPoNumber;
+
+              if (isDropdownSelectedExistingPo) {
+                try {
+                  const responseDocs = Array.isArray(poResponse.data?.documents)
+                    ? poResponse.data.documents
+                    : [];
+
+                  const poDocs =
+                    responseDocs.length > 0
+                      ? responseDocs
+                      : (await documentsAPI.getDocumentsByPO(normalizedPoNumber))
+                          .data?.documents || [];
+                  if (poDocs.length > 0) {
+                    setFiles((prev) => {
+                      const cleared = {
+                        ...prev,
+                        po: (prev.po || []).filter((f) => !f?.uploaded),
+                        do: (prev.do || []).filter((f) => !f?.uploaded),
+                        beforeWeighing: (
+                          prev.beforeWeighing || []
+                        ).filter((f) => !f?.uploaded),
+                        afterWeighing: (prev.afterWeighing || []).filter(
+                          (f) => !f?.uploaded
+                        ),
+                      };
+                      return mergeDocuments(cleared, poDocs, docTypeMapping);
+                    });
+                  }
+                } catch (docError) {
+                  console.error("Failed to fetch PO documents:", docError);
+                }
+              } else {
+                setFiles((prev) => ({
+                  ...prev,
+                  po: (prev.po || []).filter((f) => !f?.uploaded),
+                  do: (prev.do || []).filter((f) => !f?.uploaded),
+                  beforeWeighing: (prev.beforeWeighing || []).filter(
+                    (f) => !f?.uploaded
+                  ),
+                  afterWeighing: (prev.afterWeighing || []).filter(
+                    (f) => !f?.uploaded
+                  ),
+                }));
+              }
+            } catch (poError) {
+              console.error("Failed to create/get PO:", poError);
+              showPopupMessage(
+                "Failed to save PO details, but you can continue",
+                "warning"
+              );
+            }
+          }
+
+          if (createdItems.length > 0) {
+            if (vehicleCreated && poCreated) {
+              showPopupMessage(
+                `New Vehicle (${normalizedVehicleNumber}) and New PO (${normalizedPoNumber}) created successfully`,
+                "info"
+              );
+            } else {
+              const messages = [];
+              if (vehicleCreated && normalizedVehicleNumber) {
+                messages.push(
+                  `New Vehicle (${normalizedVehicleNumber}) created successfully`
+                );
+              }
+              if (poCreated && normalizedPoNumber) {
+                messages.push(
+                  `New PO (${normalizedPoNumber}) created successfully`
+                );
+              }
+
+              if (messages.length > 0) {
+                showPopupMessage(messages.join("\n"), "info");
+              } else {
+                const message = `${createdItems.join(
+                  " and "
+                )} numbers created successfully`;
+                showPopupMessage(message, "info");
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Failed to save vehicle:", error);
+          showPopupMessage(
+            "Failed to save vehicle details, but you can continue",
+            "warning"
+          );
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error("Failed to save vehicle:", error);
-        showPopupMessage(
-          "Failed to save vehicle details, but you can continue",
-          "warning"
-        );
-      } finally {
-        setLoading(false);
       }
+
+      lastStep1NextRef.current = {
+        vehicleNumber: normalizedVehicleNumber,
+        poNumber: normalizedPoNumber,
+      };
     }
 
     if (currentStep === 1) {
@@ -2237,6 +2049,41 @@ const CustomerPortal = () => {
         helperAadhar: normalizedHelperAadhar,
       };
 
+      const driverIdForSnapshot =
+        typeof savedDriverData?.id === "number"
+          ? savedDriverData.id
+          : typeof allDrivers.find((d) => d.phoneNo === formData.driverPhone)?.id ===
+            "number"
+          ? allDrivers.find((d) => d.phoneNo === formData.driverPhone)?.id
+          : null;
+      const helperIdForSnapshot =
+        typeof savedHelperData?.id === "number"
+          ? savedHelperData.id
+          : typeof allHelpers.find((h) => h.phoneNo === formData.helperPhone)?.id ===
+            "number"
+          ? allHelpers.find((h) => h.phoneNo === formData.helperPhone)?.id
+          : null;
+
+      let nextStep2Snapshot = {
+        ...currentDriverHelperData,
+        driverId: driverIdForSnapshot,
+        helperId: helperIdForSnapshot,
+      };
+
+      const prevStep2Snapshot = lastStep2NextRef.current.snapshot;
+      const step2Unchanged =
+        !!prevStep2Snapshot &&
+        prevStep2Snapshot.driverName === nextStep2Snapshot.driverName &&
+        prevStep2Snapshot.driverPhone === nextStep2Snapshot.driverPhone &&
+        prevStep2Snapshot.driverLanguage === nextStep2Snapshot.driverLanguage &&
+        prevStep2Snapshot.driverAadhar === nextStep2Snapshot.driverAadhar &&
+        prevStep2Snapshot.helperName === nextStep2Snapshot.helperName &&
+        prevStep2Snapshot.helperPhone === nextStep2Snapshot.helperPhone &&
+        prevStep2Snapshot.helperLanguage === nextStep2Snapshot.helperLanguage &&
+        prevStep2Snapshot.helperAadhar === nextStep2Snapshot.helperAadhar &&
+        prevStep2Snapshot.driverId === nextStep2Snapshot.driverId &&
+        prevStep2Snapshot.helperId === nextStep2Snapshot.helperId;
+
       const hasChanged =
         !savedDriverHelperData ||
         !compareDriverHelperData(
@@ -2244,35 +2091,107 @@ const CustomerPortal = () => {
           savedDriverHelperData
         );
 
-      if (hasChanged) {
+      let driverHelperSaveFailed = false;
+
+      if (!step2Unchanged && hasChanged) {
         try {
           setLoading(true);
 
           const driverPayload = {
             name: currentDriverHelperData.driverName,
             phoneNo: currentDriverHelperData.driverPhone,
-            type: "Driver",
             language: currentDriverHelperData.driverLanguage,
             uid: currentDriverHelperData.driverAadhar,
           };
 
-          const driverResponse = await driversAPI.validateOrCreate(
-            driverPayload
-          );
-          console.log("Driver saved:", driverResponse.data);
-
           const helperPayload = {
             name: currentDriverHelperData.helperName,
             phoneNo: currentDriverHelperData.helperPhone,
-            type: "Helper",
             language: currentDriverHelperData.helperLanguage,
             uid: currentDriverHelperData.helperAadhar,
           };
 
-          const helperResponse = await driversAPI.validateOrCreate(
-            helperPayload
-          );
-          console.log("Helper saved:", helperResponse.data);
+          const [driverResponse, helperResponse] = await Promise.all([
+            driversAPI.validateOrCreateDriverInfo(driverPayload),
+            driversAPI.validateOrCreateHelperInfo(helperPayload),
+          ]);
+
+          const savedDriver = driverResponse.data?.driver;
+          const savedHelper = helperResponse.data?.driver;
+          const driverDocs = driverResponse.data?.documents || [];
+          const helperDocs = helperResponse.data?.documents || [];
+
+          if (savedDriver) {
+            setSavedDriverData(savedDriver);
+            setDriverSearch(savedDriver.name || "");
+            setDriverExists(!!savedDriver.uid);
+            setDriverChanged(false);
+            setAllDrivers((prev) => {
+              const withoutSamePhone = (prev || []).filter(
+                (d) => d?.phoneNo !== savedDriver.phoneNo
+              );
+              return [savedDriver, ...withoutSamePhone];
+            });
+            setFormData((prev) => ({
+              ...prev,
+              driverAadhar: normalizeAadharValue(savedDriver.uid) || prev.driverAadhar,
+            }));
+          }
+
+          if (savedHelper) {
+            setSavedHelperData(savedHelper);
+            setHelperSearch(savedHelper.name || "");
+            setHelperExists(!!savedHelper.uid);
+            setHelperChanged(false);
+            setAllHelpers((prev) => {
+              const withoutSamePhone = (prev || []).filter(
+                (h) => h?.phoneNo !== savedHelper.phoneNo
+              );
+              return [savedHelper, ...withoutSamePhone];
+            });
+            setFormData((prev) => ({
+              ...prev,
+              helperAadhar: normalizeAadharValue(savedHelper.uid) || prev.helperAadhar,
+            }));
+          }
+
+          nextStep2Snapshot = {
+            ...nextStep2Snapshot,
+            driverId: typeof savedDriver?.id === "number" ? savedDriver.id : null,
+            helperId: typeof savedHelper?.id === "number" ? savedHelper.id : null,
+          };
+
+          if (driverDocs.length > 0 || helperDocs.length > 0) {
+            setFiles((prev) => {
+              const existingDriver = prev.driverAadhar;
+              const existingHelper = prev.helperAadhar;
+
+              const driverArr = Array.isArray(existingDriver)
+                ? existingDriver
+                : existingDriver
+                ? [existingDriver]
+                : [];
+              const helperArr = Array.isArray(existingHelper)
+                ? existingHelper
+                : existingHelper
+                ? [existingHelper]
+                : [];
+
+              const cleared = {
+                ...prev,
+                driverAadhar: driverArr.filter((f) => !f?.uploaded),
+                helperAadhar: helperArr.filter((f) => !f?.uploaded),
+              };
+
+              const withDriver =
+                driverDocs.length > 0
+                  ? mergeDocuments(cleared, driverDocs, docTypeMapping)
+                  : cleared;
+              return helperDocs.length > 0
+                ? mergeDocuments(withDriver, helperDocs, docTypeMapping)
+                : withDriver;
+            });
+          }
 
           setSavedDriverHelperData(currentDriverHelperData);
 
@@ -2287,10 +2206,18 @@ const CustomerPortal = () => {
               "Failed to save driver/helper info",
             "warning"
           );
+
+          driverHelperSaveFailed = true;
         } finally {
           setLoading(false);
         }
       }
+
+      if (driverHelperSaveFailed) {
+        return;
+      }
+
+      lastStep2NextRef.current.snapshot = nextStep2Snapshot;
     }
 
     setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
@@ -2323,6 +2250,14 @@ const CustomerPortal = () => {
     setShowNotify(false);
     setVehicleSaved(false);
     setSavedDriverHelperData(null);
+    setSavedDriverData(null);
+    setSavedHelperData(null);
+    setAllDrivers([]);
+    setAllHelpers([]);
+    setDriverSearch("");
+    setHelperSearch("");
+    setSelectedVehicle(null);
+    setSelectedPoNumber(null);
     setDriverExists(false);
     setHelperExists(false);
     setDapName("");
@@ -2330,6 +2265,13 @@ const CustomerPortal = () => {
     setVehicleSearch("");
     setHasShownDriverHelperPopup(false);
 
+    lastStep1NextRef.current = { vehicleNumber: null, poNumber: null };
+    lastStep2NextRef.current.snapshot = null;
+
+    localStorage.removeItem(storageKeyFormData);
+    localStorage.removeItem(storageKeyFiles);
+    localStorage.removeItem(storageKeyCurrentStep);
+    localStorage.removeItem(storageKeySuccessData);
     localStorage.removeItem("customerPortal_formData");
     localStorage.removeItem("customerPortal_files");
     localStorage.removeItem("customerPortal_currentStep");
@@ -2380,7 +2322,13 @@ const CustomerPortal = () => {
   };
 
   const handleDownloadQr = async () => {
-    if (!successData?.qrCodeImage) {
+    if (!successData) {
+      return;
+    }
+    const qrCodeImage =
+      successData.qrCodeImage ||
+      makeDemoQr(successData.vehicleNumber, successData.driverPhone);
+    if (!qrCodeImage) {
       return;
     }
     const sanitizedVehicle = (successData.vehicleNumber || "vehicle").replace(
@@ -2390,7 +2338,7 @@ const CustomerPortal = () => {
     const filename = `entry-qr-${sanitizedVehicle}.png`;
 
     try {
-      const imageSrc = successData.qrCodeImage;
+      const imageSrc = qrCodeImage;
 
       if (imageSrc.startsWith("data:")) {
         const link = document.createElement("a");
@@ -2552,6 +2500,9 @@ const CustomerPortal = () => {
   };
 
   if (successData) {
+    const qrCodeImage =
+      successData.qrCodeImage ||
+      makeDemoQr(successData.vehicleNumber, successData.driverPhone);
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-10">
         {showNotify && (
@@ -2662,7 +2613,7 @@ const CustomerPortal = () => {
             <div className="mt-8 grid gap-8 lg:grid-cols-2">
               <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-gray-50 p-6">
                 <img
-                  src={successData.qrCodeImage}
+                  src={qrCodeImage}
                   alt="Driver entry QR code"
                   className="h-60 w-60 rounded-xl border border-gray-200 bg-white object-contain p-4"
                 />
@@ -2805,10 +2756,6 @@ const CustomerPortal = () => {
                   <h1 className="text-2xl font-bold text-gray-900">
                     Customer Gate Entry Portal
                   </h1>
-                  <p className="text-sm text-gray-500">
-                    Submit driver details and documents to generate a secure
-                    entry QR code.
-                  </p>
                 </div>
               </div>
               <div className="flex gap-2 flex-col sm:flex-row">
@@ -2866,8 +2813,6 @@ const CustomerPortal = () => {
                   errors={errors}
                   clearFieldError={clearFieldError}
                   vehicles={vehicles}
-                  setVehicles={setVehicles}
-                  myVehicles={myVehicles}
                   vehicleDropdownOpen={vehicleDropdownOpen}
                   setVehicleDropdownOpen={setVehicleDropdownOpen}
                   vehicleSearch={vehicleSearch}
@@ -2876,12 +2821,12 @@ const CustomerPortal = () => {
                   selectedVehicle={selectedVehicle}
                   setSelectedVehicle={setSelectedVehicle}
                   loadingVehicleData={loadingVehicleData}
-                  vehicleRatings={vehicleRatings}
                   poNumbers={poNumbers}
                   poDropdownOpen={poDropdownOpen}
                   setPoDropdownOpen={setPoDropdownOpen}
                   poSearch={poSearch}
                   setPoSearch={setPoSearch}
+                  setSelectedPoNumber={setSelectedPoNumber}
                   loadingPos={loadingPos}
                   dapName={dapName}
                   loadingDap={loadingDap}
@@ -2889,10 +2834,6 @@ const CustomerPortal = () => {
                   vehicleListRef={vehicleListRef}
                   poInputRef={poInputRef}
                   poListRef={poListRef}
-                  handleVehicleSelect={handleVehicleSelect}
-                  handlePONumberBlur={handlePONumberBlur}
-                  validateVehicleNumber={validateVehicleNumber}
-                  validatePoNumber={validatePoNumber}
                 />
               )}
 
@@ -2986,33 +2927,36 @@ const CustomerPortal = () => {
                 </div>
               )}
 
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <button
                   type="button"
                   onClick={handlePreviousStep}
-                  disabled={currentStep === 0}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 px-6 py-3 text-sm font-semibold text-gray-700 transition-all duration-200 hover:bg-gray-100 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+                  disabled={currentStep === 0 || loading}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                 >
+                  <ChevronLeft className="h-4 w-4" />
                   Previous
                 </button>
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  disabled={currentStep === steps.length - 1 || loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                >
-                  {loading ? (
-                    <>
-                      <Loader className="h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      Next
-                      <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
-                    </>
-                  )}
-                </button>
+                {currentStep !== steps.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={handleNextStep}
+                    disabled={loading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader className="h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        Next
+                        <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
+                      </>
+                    )}
+                  </button>
+                )}
                 {currentStep === steps.length - 1 && (
                   <button
                     type="button"
